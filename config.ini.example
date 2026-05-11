@@ -29,11 +29,10 @@ an_prefix = scf.oai.edge.example.folio.ebsco.com.fs00001006
 an_separator = dots
 
 [google]
-# Leave both blank to disable Google cover-image lookup.
-# When enabled, images are fetched once during generation (not at view time).
-api_key =
-# Google Custom Search Engine ID
-cx =
+# Cover images are fetched via the free Google Books viewapi (no API key required).
+# Images are fetched at generation time (not at view time) using ISBN or OCLC numbers.
+# Set to false to disable all cover-image lookups.
+enabled = true
 
 [output]
 # Days to look back when no explicit --start/--end is given

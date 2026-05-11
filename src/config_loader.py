@@ -99,16 +99,10 @@ class Config:
     # ------------------------------------------------------------------
 
     @property
-    def google_api_key(self) -> str:
-        return self._get("google", "api_key")
-
-    @property
-    def google_cx(self) -> str:
-        return self._get("google", "cx")
-
-    @property
     def google_enabled(self) -> bool:
-        return bool(self.google_api_key and self.google_cx)
+        """True unless explicitly set to false/0/no in [google] enabled."""
+        raw = self._get("google", "enabled", "true").lower()
+        return raw not in ("false", "0", "no")
 
     # ------------------------------------------------------------------
     # Output

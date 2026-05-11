@@ -12,6 +12,7 @@ from src.html_generator import (
     _publisher,
     _pub_year,
     _isbn,
+    _oclc,
     _format_date,
     _material_uuid_from_line,
 )
@@ -58,6 +59,7 @@ SAMPLE_INSTANCE = {
     ],
     "identifiers": [
         {"value": "9780123456789", "identifierTypeId": "isbn-type-id"},
+        {"value": "(OCoLC)12345678", "identifierTypeId": "oclc-type-id"},
         {"value": "SomeOtherValue", "identifierTypeId": "other-type-id"},
     ],
 }
@@ -112,6 +114,15 @@ def test_isbn_extracts_numeric():
 
 def test_isbn_returns_none_when_none_present():
     assert _isbn({"identifiers": [{"value": "notanisbn", "identifierTypeId": "x"}]}) is None
+
+
+def test_oclc_extracts_from_ocolc_prefix():
+    assert _oclc(SAMPLE_INSTANCE) == "12345678"
+
+
+def test_oclc_returns_none_when_absent():
+    instance = {"identifiers": [{"value": "9780123456789", "identifierTypeId": "isbn"}]}
+    assert _oclc(instance) is None
 
 
 def test_format_date_trims_to_date():
@@ -170,6 +181,7 @@ class TestBuildItems:
         assert item["receipt_date"] == "2024-03-15"
         assert item["type_label"] == "Books"
         assert item["isbn"] == "9780123456789"
+        assert item["oclc"] == "12345678"
         assert item["eds_url"] is not None
 
     def test_uses_titleOrPackage_when_no_instance(self):
@@ -200,6 +212,7 @@ class TestGenerateHtml:
             "cover_url": None,
             "eds_url": "https://openurl.ebsco.com/c/abc/openurl?sid=ebsco:plink&id=x",
             "isbn": None,
+            "oclc": None,
         }
         base.update(kwargs)
         return base

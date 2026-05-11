@@ -58,6 +58,7 @@ def build_items(
             "cover_url": None,  # populated later by generate.py if images enabled
             "eds_url": _eds_url(instance_id, config),
             "isbn": _isbn(instance),
+            "oclc": _oclc(instance),
         }
         items.append(item)
 
@@ -163,6 +164,21 @@ def _isbn(instance: dict) -> Optional[str]:
         value = ident.get("value", "").replace("-", "").replace(" ", "")
         if re.fullmatch(r"\d{10}|\d{13}", value):
             return value
+    return None
+
+
+def _oclc(instance: dict) -> Optional[str]:
+    """
+    Return the OCLC number from instance identifiers if present.
+
+    FOLIO stores OCLC numbers either as bare digits or with an "(OCoLC)" prefix.
+    Returns the bare numeric string so it can be passed directly to the Google Books API.
+    """
+    for ident in instance.get("identifiers") or []:
+        value = ident.get("value", "").strip()
+        match = re.match(r"^\(OCoLC\)(\d+)$", value)
+        if match:
+            return match.group(1)
     return None
 
 

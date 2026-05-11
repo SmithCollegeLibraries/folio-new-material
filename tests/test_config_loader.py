@@ -41,8 +41,7 @@ FULL_CONFIG = """
     an_separator = dots
 
     [google]
-    api_key = GOOGLE_KEY
-    cx      = GOOGLE_CX
+    enabled = true
 
     [output]
     days            = 14
@@ -81,9 +80,9 @@ class TestMinimalConfig:
         cfg = Config(_write_config(tmp_path, MINIMAL_CONFIG))
         assert cfg.output_days == 30
 
-    def test_google_disabled_when_not_configured(self, tmp_path):
+    def test_google_enabled_by_default(self, tmp_path):
         cfg = Config(_write_config(tmp_path, MINIMAL_CONFIG))
-        assert not cfg.google_enabled
+        assert cfg.google_enabled is True
 
     def test_eds_disabled_when_not_configured(self, tmp_path):
         cfg = Config(_write_config(tmp_path, MINIMAL_CONFIG))
@@ -109,11 +108,14 @@ class TestFullConfig:
         assert cfg.eds_an_separator == "dots"
         assert cfg.eds_enabled is True
 
-    def test_google_values(self, tmp_path):
+    def test_google_enabled_true(self, tmp_path):
         cfg = Config(_write_config(tmp_path, FULL_CONFIG))
-        assert cfg.google_api_key == "GOOGLE_KEY"
-        assert cfg.google_cx == "GOOGLE_CX"
         assert cfg.google_enabled is True
+
+    def test_google_disabled_when_false(self, tmp_path):
+        content = MINIMAL_CONFIG + "\n[google]\nenabled = false\n"
+        cfg = Config(_write_config(tmp_path, content))
+        assert cfg.google_enabled is False
 
     def test_output_values(self, tmp_path):
         cfg = Config(_write_config(tmp_path, FULL_CONFIG))

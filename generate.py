@@ -146,24 +146,27 @@ def _fetch_all_order_lines(client: FolioClient, start: str, end: str, config: Co
 
 
 def _enrich_with_images(items: list[dict], config: Config, skip: bool) -> None:
-    """Fetch cover images for each item in-place (rate-limited to 1 req/s)."""
-    if skip:
+    """
+    Fetch cover images via Google Books for each item in-place.
+
+    Rate-limited to one request per second to be polite to Google's servers.
+    Skips items that have neither an ISBN nor an OCLC number.
+    """
+    if skip or not config.google_enabled:
         return
-    needs_image = [i for i in items if i["isbn"] or config.google_enabled]
-    if not needs_image:
+
+    eligible = [i for i in items if i.get("isbn") or i.get("oclc")]
+    if not eligible:
         return
 
     logging.getLogger(__name__).info(
-        "Fetching cover images for %d items …", len(needs_image)
+        "Fetching cover images for %d items …", len(eligible)
     )
-    for idx, item in enumerate(items):
-        if not item["isbn"] and not config.google_enabled:
-            continue
+    for idx, item in enumerate(eligible):
         url = fetch_cover_image(
-            item["title"],
-            item["author"],
-            item["isbn"],
-            config,
+            isbn=item.get("isbn"),
+            oclc=item.get("oclc"),
+            config=config,
         )
         item["cover_url"] = url
         if idx > 0 and idx % 10 == 0:
