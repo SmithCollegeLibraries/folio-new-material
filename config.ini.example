@@ -31,8 +31,16 @@ an_separator = dots
 [google]
 # Cover images are fetched via the free Google Books viewapi (no API key required).
 # Images are fetched at generation time (not at view time) using ISBN or OCLC numbers.
-# Set to false to disable all cover-image lookups.
+# Set to false to disable Google Books cover-image lookups.
 enabled = true
+
+[tmdb]
+# TMDB (The Movie Database) poster lookup — useful for DVD/video materials.
+# Obtain a free API key at https://www.themoviedb.org/settings/api
+# Leave blank to disable TMDB poster lookup.
+api_key =
+# Poster image size: w185, w342, w500, w780, original (default: w500)
+poster_size = w500
 
 [output]
 # Days to look back when no explicit --start/--end is given

@@ -30,10 +30,12 @@ import sys
 import time
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Optional
 
 from src.config_loader import Config, ConfigError
 from src.folio_client import FolioClient, FolioAuthError
 from src.google_images import fetch_cover_image
+from src.tmdb_client import fetch_tmdb_poster
 from src.html_generator import build_items, generate_html, write_output
 
 
@@ -147,27 +149,45 @@ def _fetch_all_order_lines(client: FolioClient, start: str, end: str, config: Co
 
 def _enrich_with_images(items: list[dict], config: Config, skip: bool) -> None:
     """
-    Fetch cover images via Google Books for each item in-place.
+    Fetch cover images for each item in-place using a two-step fallback chain.
 
-    Rate-limited to one request per second to be polite to Google's servers.
-    Skips items that have neither an ISBN nor an OCLC number.
+    Step 1 — Google Books viewapi (free, no key): tried when an ISBN or OCLC
+              number is available.  Good for books and other print materials.
+    Step 2 — TMDB poster (requires api_key in [tmdb]): tried when Google Books
+              returns nothing.  Good for DVDs, Blu-rays, and video recordings.
+
+    Rate-limited to one request per second per external service to stay within
+    typical API rate limits.
     """
-    if skip or not config.google_enabled:
+    if skip:
         return
 
-    eligible = [i for i in items if i.get("isbn") or i.get("oclc")]
-    if not eligible:
+    any_source = config.google_enabled or config.tmdb_enabled
+    if not any_source:
         return
 
-    logging.getLogger(__name__).info(
-        "Fetching cover images for %d items …", len(eligible)
-    )
-    for idx, item in enumerate(eligible):
-        url = fetch_cover_image(
-            isbn=item.get("isbn"),
-            oclc=item.get("oclc"),
-            config=config,
-        )
+    log = logging.getLogger(__name__)
+    log.info("Fetching cover images for %d items …", len(items))
+
+    for idx, item in enumerate(items):
+        url: Optional[str] = None  # type: ignore[name-defined]
+
+        # --- Google Books (ISBN / OCLC) ---
+        if config.google_enabled and (item.get("isbn") or item.get("oclc")):
+            url = fetch_cover_image(
+                isbn=item.get("isbn"),
+                oclc=item.get("oclc"),
+                config=config,
+            )
+
+        # --- TMDB fallback (title search) ---
+        if not url and config.tmdb_enabled:
+            url = fetch_tmdb_poster(
+                title=item["title"],
+                api_key=config.tmdb_api_key,
+                poster_size=config.tmdb_poster_size,
+            )
+
         item["cover_url"] = url
         if idx > 0 and idx % 10 == 0:
             time.sleep(1)  # be polite to external APIs

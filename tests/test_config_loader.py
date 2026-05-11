@@ -43,6 +43,10 @@ FULL_CONFIG = """
     [google]
     enabled = true
 
+    [tmdb]
+    api_key     = TMDB_KEY
+    poster_size = w342
+
     [output]
     days            = 14
     output_file     = /tmp/new-materials.html
@@ -92,6 +96,10 @@ class TestMinimalConfig:
         cfg = Config(_write_config(tmp_path, MINIMAL_CONFIG))
         assert cfg.material_types == {}
 
+    def test_tmdb_disabled_when_not_configured(self, tmp_path):
+        cfg = Config(_write_config(tmp_path, MINIMAL_CONFIG))
+        assert cfg.tmdb_enabled is False
+
 
 class TestFullConfig:
     def test_folio_values(self, tmp_path):
@@ -116,6 +124,12 @@ class TestFullConfig:
         content = MINIMAL_CONFIG + "\n[google]\nenabled = false\n"
         cfg = Config(_write_config(tmp_path, content))
         assert cfg.google_enabled is False
+
+    def test_tmdb_values(self, tmp_path):
+        cfg = Config(_write_config(tmp_path, FULL_CONFIG))
+        assert cfg.tmdb_api_key == "TMDB_KEY"
+        assert cfg.tmdb_poster_size == "w342"
+        assert cfg.tmdb_enabled is True
 
     def test_output_values(self, tmp_path):
         cfg = Config(_write_config(tmp_path, FULL_CONFIG))

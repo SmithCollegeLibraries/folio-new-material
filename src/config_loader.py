@@ -105,6 +105,23 @@ class Config:
         return raw not in ("false", "0", "no")
 
     # ------------------------------------------------------------------
+    # TMDB
+    # ------------------------------------------------------------------
+
+    @property
+    def tmdb_api_key(self) -> str:
+        return self._get("tmdb", "api_key")
+
+    @property
+    def tmdb_poster_size(self) -> str:
+        """TMDB image size slug: w185, w342, w500, w780, original."""
+        return self._get("tmdb", "poster_size", "w500")
+
+    @property
+    def tmdb_enabled(self) -> bool:
+        return bool(self.tmdb_api_key)
+
+    # ------------------------------------------------------------------
     # Output
     # ------------------------------------------------------------------
 
