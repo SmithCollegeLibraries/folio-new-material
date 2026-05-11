@@ -1,0 +1,60 @@
+# FOLIO New Materials — Example Configuration
+# Copy this file to config.ini and fill in your values.
+#
+# SECURITY: Run the generate script from *outside* this directory so that
+# config.ini is never accidentally served or exposed by a web server.
+# Example cron entry (script lives at /opt/folio-new-books):
+#   0 6 * * * cd /opt && python folio-new-books/generate.py --config folio-new-books/config.ini
+
+[folio]
+# Okapi gateway URL — no trailing slash
+base_url = https://api-example.folio.ebsco.com
+# FOLIO tenant ID used in x-okapi-tenant header
+tenant = fs00001006
+# Account with read access to orders and inventory
+username = your_username
+password = your_password
+# Optional: FOLIO Edge API base URL (leave blank if not used)
+edge_api =
+
+[eds]
+# EDS OpenURL path component — the "4e4lys" in /c/4e4lys/openurl
+db_id = 4e4lys
+# EDS catalog database code — the "cat09206a" in id=ebsco:cat09206a:...
+catalog_db = cat09206a
+# Access-number prefix that identifies your FOLIO instance in EDS
+# Example: scf.oai.edge.fivecolleges.folio.ebsco.com.fs00001006
+an_prefix = scf.oai.edge.example.folio.ebsco.com.fs00001006
+# How to format the UUID in the EDS id parameter: dots | dashes
+an_separator = dots
+
+[google]
+# Leave both blank to disable Google cover-image lookup.
+# When enabled, images are fetched once during generation (not at view time).
+api_key =
+# Google Custom Search Engine ID
+cx =
+
+[output]
+# Days to look back when no explicit --start/--end is given
+days = 30
+# File path for the generated HTML (relative to where you run the script)
+output_file = output/new-materials.html
+# Text shown in the browser tab and page heading
+title = New Materials
+# Your library's display name
+institution_name = Your Library
+# URL to a logo image (leave blank to show no logo)
+logo_url =
+# Brand colours — must be valid CSS colour values
+primary_color = #003366
+accent_color = #ffffff
+
+[material_types]
+# Map material-type UUID to the label shown in the dropdown.
+# Leave this section empty to include all material types without filtering.
+# The first entry becomes the default selection.
+#
+# 2d72aa13-2451-41fe-afc7-b3dc7c131389 = Books
+# faa0cd0a-e408-4b57-acff-1c3f9171723d = DVD
+# a2c91e87-6bab-44d6-8adb-1fd39a8bf9d6 = Music CD

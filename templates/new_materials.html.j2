@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title }} — {{ institution_name }}</title>
+  <style>
+    /* ── Design tokens ─────────────────────────────────────────────── */
+    :root {
+      --color-primary:    {{ primary_color }};
+      --color-accent:     {{ accent_color }};
+      --color-bg:         #f5f5f5;
+      --color-surface:    #ffffff;
+      --color-border:     #ddd;
+      --color-text:       #222;
+      --color-muted:      #555;
+      --color-badge-bg:   #e8ecf0;
+      --radius:           6px;
+      --shadow:           0 1px 4px rgba(0,0,0,.12);
+      --font:             system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+
+    /* ── Reset / base ──────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--color-bg);
+      color: var(--color-text);
+      font-family: var(--font);
+      line-height: 1.5;
+    }
+    a { color: var(--color-primary); }
+    a:focus-visible {
+      outline: 3px solid var(--color-primary);
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+    img { max-width: 100%; display: block; }
+
+    /* ── Skip link ─────────────────────────────────────────────────── */
+    .skip-link {
+      position: absolute;
+      left: -9999px;
+      top: auto;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+    }
+    .skip-link:focus {
+      position: fixed;
+      top: 0; left: 0;
+      width: auto; height: auto;
+      padding: .5rem 1rem;
+      background: var(--color-primary);
+      color: var(--color-accent);
+      font-weight: bold;
+      z-index: 9999;
+    }
+
+    /* ── Header ────────────────────────────────────────────────────── */
+    .site-header {
+      background: var(--color-primary);
+      color: var(--color-accent);
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .site-header .logo {
+      height: 56px;
+      width: auto;
+    }
+    .site-header h1 {
+      margin: 0;
+      font-size: 1.5rem;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+    .site-header .header-sub {
+      margin: 0;
+      font-size: .875rem;
+      opacity: .85;
+    }
+
+    /* ── Main content ──────────────────────────────────────────────── */
+    .site-main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+
+    /* ── Toolbar ────────────────────────────────────────────────────── */
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+      padding: .75rem 1rem;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+    }
+    .toolbar label {
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .toolbar select {
+      padding: .35rem .6rem;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      font-size: 1rem;
+      background: var(--color-surface);
+      cursor: pointer;
+    }
+    .toolbar select:focus-visible {
+      outline: 3px solid var(--color-primary);
+      outline-offset: 2px;
+    }
+    .results-count {
+      margin-left: auto;
+      color: var(--color-muted);
+      font-size: .9rem;
+    }
+
+    /* ── Materials grid ────────────────────────────────────────────── */
+    .materials-grid {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 1.25rem;
+    }
+
+    /* ── Card ───────────────────────────────────────────────────────── */
+    .material-card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: box-shadow .15s ease;
+    }
+    .material-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.16); }
+
+    .card-cover {
+      width: 100%;
+      aspect-ratio: 2 / 3;
+      object-fit: cover;
+      background: var(--color-badge-bg);
+    }
+    .card-cover-placeholder {
+      width: 100%;
+      aspect-ratio: 2 / 3;
+      background: var(--color-badge-bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-muted);
+      font-size: .8rem;
+    }
+
+    .card-body {
+      padding: .75rem;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: .25rem;
+    }
+    .card-title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    .card-title a {
+      text-decoration: none;
+      color: var(--color-text);
+    }
+    .card-title a:hover { text-decoration: underline; }
+    .card-author {
+      margin: 0;
+      font-size: .875rem;
+      color: var(--color-muted);
+    }
+    .card-publisher {
+      margin: 0;
+      font-size: .8rem;
+      color: var(--color-muted);
+    }
+    .card-meta {
+      margin-top: auto;
+      padding-top: .5rem;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: .4rem;
+    }
+    .badge {
+      display: inline-block;
+      padding: .2rem .5rem;
+      border-radius: 4px;
+      font-size: .75rem;
+      font-weight: 600;
+      background: var(--color-badge-bg);
+      color: var(--color-primary);
+    }
+    .card-received {
+      margin: 0;
+      font-size: .75rem;
+      color: var(--color-muted);
+    }
+
+    /* ── Empty state ────────────────────────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--color-muted);
+    }
+
+    /* ── Footer ─────────────────────────────────────────────────────── */
+    .site-footer {
+      margin-top: 2.5rem;
+      padding: 1rem 1.5rem;
+      border-top: 1px solid var(--color-border);
+      font-size: .8rem;
+      color: var(--color-muted);
+      text-align: center;
+    }
+
+    /* ── Screen-reader only ─────────────────────────────────────────── */
+    .sr-only {
+      position: absolute;
+      width: 1px; height: 1px;
+      margin: -1px; padding: 0;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* ── Responsive ─────────────────────────────────────────────────── */
+    @media (max-width: 480px) {
+      .materials-grid { grid-template-columns: 1fr 1fr; }
+      .site-header h1 { font-size: 1.2rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+
+  <header class="site-header" role="banner">
+    {% if logo_url %}
+    <img src="{{ logo_url }}" alt="{{ institution_name }} logo" class="logo" width="auto" height="56">
+    {% endif %}
+    <div>
+      <h1>{{ title }}</h1>
+      <p class="header-sub">
+        {{ institution_name }} &mdash;
+        <span aria-label="date range">{{ start_date }} to {{ end_date }}</span>
+      </p>
+    </div>
+  </header>
+
+  <main id="main-content" class="site-main">
+
+    <nav aria-label="Filter materials">
+      <div class="toolbar">
+        <label for="type-filter">Format:</label>
+        <select
+          id="type-filter"
+          aria-controls="materials-grid"
+          aria-label="Filter by material format">
+          <option value="all">All Formats ({{ total_count }})</option>
+          {% for uuid, label in active_types.items() %}
+          <option value="{{ uuid }}">{{ label }} ({{ counts[uuid] }})</option>
+          {% endfor %}
+        </select>
+        <p class="results-count" id="results-count" aria-live="polite" aria-atomic="true">
+          Showing {{ total_count }} item{{ 's' if total_count != 1 else '' }}
+        </p>
+      </div>
+    </nav>
+
+    {% if items %}
+    <ul
+      id="materials-grid"
+      class="materials-grid"
+      role="list"
+      aria-label="New materials">
+      {% for item in items %}
+      <li
+        class="material-card"
+        data-type="{{ item.type_uuid }}"
+        aria-label="{{ item.title }}{% if item.author %} by {{ item.author }}{% endif %}">
+        <article>
+          {% if item.cover_url %}
+          <img
+            class="card-cover"
+            src="{{ item.cover_url }}"
+            alt="Cover of {{ item.title }}"
+            loading="lazy"
+            width="240"
+            height="360">
+          {% else %}
+          <div class="card-cover-placeholder" aria-hidden="true">No cover</div>
+          {% endif %}
+
+          <div class="card-body">
+            <h2 class="card-title" id="item-{{ loop.index }}">
+              {% if item.eds_url %}
+              <a href="{{ item.eds_url }}"
+                 aria-labelledby="item-{{ loop.index }}"
+                 target="_blank"
+                 rel="noopener noreferrer">{{ item.title }}</a>
+              {% else %}
+              {{ item.title }}
+              {% endif %}
+            </h2>
+
+            {% if item.author %}
+            <p class="card-author">{{ item.author }}</p>
+            {% endif %}
+
+            {% if item.publisher or item.year %}
+            <p class="card-publisher">
+              {% if item.publisher %}{{ item.publisher }}{% endif %}
+              {% if item.publisher and item.year %}, {% endif %}
+              {% if item.year %}{{ item.year }}{% endif %}
+            </p>
+            {% endif %}
+
+            <div class="card-meta">
+              <span class="badge">{{ item.type_label }}</span>
+              {% if item.receipt_date %}
+              <p class="card-received">
+                <span class="sr-only">Received: </span>{{ item.receipt_date }}
+              </p>
+              {% endif %}
+            </div>
+          </div>
+        </article>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <p id="no-results" class="empty-state" hidden aria-live="polite">
+      No items match the selected format.
+    </p>
+    {% else %}
+    <div class="empty-state" role="status">
+      <p>No new materials were found for this date range.</p>
+    </div>
+    {% endif %}
+
+  </main>
+
+  <footer class="site-footer" role="contentinfo">
+    <p>Generated {{ generated_at }} &bull; {{ institution_name }}</p>
+  </footer>
+
+  <script>
+  (function () {
+    'use strict';
+
+    var select   = document.getElementById('type-filter');
+    var counter  = document.getElementById('results-count');
+    var noResult = document.getElementById('no-results');
+    var cards    = Array.prototype.slice.call(
+                     document.querySelectorAll('#materials-grid .material-card'));
+
+    if (!select || !cards.length) { return; }
+
+    select.addEventListener('change', function () {
+      var chosen = this.value;
+      var visible = 0;
+
+      cards.forEach(function (card) {
+        var show = chosen === 'all' || card.dataset.type === chosen;
+        card.hidden = !show;
+        if (show) { visible++; }
+      });
+
+      counter.textContent =
+        'Showing ' + visible + ' item' + (visible !== 1 ? 's' : '');
+
+      if (noResult) {
+        noResult.hidden = visible > 0;
+      }
+    });
+  }());
+  </script>
+
+</body>
+</html>

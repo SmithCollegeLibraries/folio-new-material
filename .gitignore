@@ -1,0 +1,21 @@
+# Credentials — never commit
+config.ini
+.env
+
+# Generated output
+output/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+*.egg-info/
+venv/
+.venv/
+
+# macOS
+.DS_Store
