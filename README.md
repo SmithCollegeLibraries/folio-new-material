@@ -1,16 +1,30 @@
 # FOLIO New Materials
 
-Generates a self-contained HTML5 page listing recently received library materials from
-FOLIO's orders API. Designed to be run as an overnight cron job.
+Generates an accessible HTML5 page listing recently received library materials from
+FOLIO's orders API.  Designed to be run as an overnight cron job that publishes a
+small static site (HTML + CSS + JS + JSON) library staff can drop on any web server
+or open directly via `file://`.
 
 ## Features
 
 - Queries FOLIO `/orders/order-lines` for items with receipt status *Fully Received*
-- Optional cover images via Open Library (free) or Google Custom Search
-- EDS deep-link support for each title
-- Filterable by material format (dropdown, no page reload)
-- Fully accessible: semantic HTML5, ARIA live regions, skip-to-content link, keyboard navigable
-- Self-contained output: one HTML file, no server needed to view it
+- Auto-discovers material-type names from FOLIO when not configured manually
+- Cover images via the free Google Books viewapi (ISBN / OCLC lookup, no API key)
+- Optional TMDB poster fallback for DVDs and video recordings
+- Color-coded placeholder covers when no image is available (material type + title)
+- EDS OpenURL deep links to each title's discovery page
+- Subject-area grouping via keyword-based classification (`[subject_groups]` config)
+- Grid view (6 columns at natural cover size) and a table view, toggled by the user
+  and remembered in localStorage
+- Title / author search, format filter, subject filter, sort (newest / alphabetical)
+- Active-filter chips with one-click "clear all"
+- Call-number display when present in holdings
+- JSON data feed (`data/items.json`) emitted alongside the HTML for RSS bridges,
+  dashboards, and other programmatic consumers
+- A11Y: semantic HTML5, ARIA live region for filter results, skip-to-content link,
+  40px touch targets, strong `:focus-visible` indicators, full keyboard navigation
+- Print-friendly stylesheet (3-column grid, plain borders, no printed URLs)
+- `<noscript>` fallback links users without JavaScript to the JSON data feed
 
 ---
 
@@ -22,7 +36,7 @@ FOLIO's orders API. Designed to be run as an overnight cron job.
 pip install -r requirements.txt
 ```
 
-Python 3.11+ is recommended.
+Python 3.9 or newer is required (uses `dict[str, str]` PEP-585 annotations).
 
 ### 2. Create your config
 
@@ -44,7 +58,12 @@ Edit `config.ini` and fill in at minimum:
 python generate.py
 ```
 
-The output file defaults to `output/new-materials.html`.
+The generator writes three things into the same parent directory as the
+configured `output_file` (default `output/`):
+
+- `new-materials.html` — the page shell with embedded item data
+- `assets/styles.css` and `assets/app.js` — copied from `static/`
+- `data/items.json` — the same item data as a standalone feed
 
 ---
 
@@ -76,34 +95,66 @@ Used to build EDS OpenURL deep links. Leave blank to disable links.
 | `an_separator` | `dots` (default) or `dashes` — how the UUID is formatted |
 
 #### `[google]`
-Optional cover images from Google Custom Search. Leave both blank to disable.
+Cover image lookups via the free Google Books viewapi.  No API key required.
+Lookup keys are ISBN first, then OCLC if available.
 
-| Key | Description |
-|-----|-------------|
-| `api_key` | Google API key |
-| `cx` | Custom Search Engine ID |
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Set to `false` to disable Google Books lookups entirely |
 
-When Google is not configured, Open Library is checked automatically for ISBNs.
+#### `[tmdb]`
+Optional TMDB (The Movie Database) poster fallback for DVDs / video recordings.
+Tried only when Google Books returns no cover.  Get a free API key at
+<https://www.themoviedb.org/settings/api>.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `api_key` | — | Leave blank to disable TMDB lookups |
+| `poster_size` | `w500` | One of `w185`, `w342`, `w500`, `w780`, `original` |
 
 #### `[output]`
 | Key | Default | Description |
 |-----|---------|-------------|
 | `days` | `30` | Lookback window when no `--start`/`--end` given |
-| `output_file` | `output/new-materials.html` | Output path |
+| `output_file` | `output/new-materials.html` | Output path for the HTML; assets/ and data/ are written alongside it |
 | `title` | `New Materials` | Page heading |
 | `institution_name` | `Library` | Shown in header and footer |
-| `logo_url` | — | URL of your logo image |
+| `logo_url` | — | URL (or data: URI) of your logo image |
 | `primary_color` | `#003366` | Header/link colour |
 | `accent_color` | `#ffffff` | Text on primary background |
+| `default_view` | `grid` | Initial view (`grid` or `table`); per-user choice is then saved to localStorage |
 
 #### `[material_types]`
-Maps FOLIO material-type UUIDs to display labels for the dropdown. Leave empty to show
-all material types.
+Maps FOLIO material-type UUIDs to display labels for the format dropdown.
+
+**Leave this section empty (or omit it) to fetch ALL material types from
+FOLIO.**  When empty, the generator calls `/material-types` to auto-discover
+type names, so the dropdown is populated from the actual types that appear in
+the results.  Add entries here only when you want to restrict the listing to
+specific formats.
 
 ```ini
 [material_types]
 2d72aa13-2451-41fe-afc7-b3dc7c131389 = Books
 faa0cd0a-e408-4b57-acff-1c3f9171723d = DVD
+```
+
+#### `[subject_groups]`
+Optional.  Groups items by high-level subject area using keyword-based
+classification against each instance's FOLIO subject headings.
+
+Each line is `Group Name = comma-separated keywords` (case-insensitive).
+An item is placed in the first group whose keyword appears in any of its
+subjects; unmatched items are listed as "Other".
+
+When this section has any entries, a second filter dropdown ("Subject area")
+appears in the toolbar.
+
+```ini
+[subject_groups]
+Engineering = engineering, computer, programming, mathematics, physics
+Humanities  = literature, philosophy, history, art, music
+Sciences    = biology, chemistry, geology, ecology, astronomy
 ```
 
 ---
@@ -129,6 +180,21 @@ python generate.py [options]
 > **Security note:** Run the script from *outside* the project directory.
 > This keeps `config.ini` away from any web-accessible path.
 
+The generator writes a small directory tree at the output location:
+
+```
+/var/www/html/library/
+├── new-materials.html
+├── assets/
+│   ├── styles.css
+│   └── app.js
+└── data/
+    └── items.json
+```
+
+Point the web server at the parent directory so the HTML can resolve
+`assets/…` and `data/…` as siblings.
+
 Example `/etc/cron.d/folio-new-materials`:
 
 ```cron
@@ -142,7 +208,10 @@ Example `/etc/cron.d/folio-new-materials`:
 ## Running tests
 
 ```bash
-pytest --cov=src tests/
+python -m pytest tests/
+
+# with coverage (requires pytest-cov, already in requirements.txt)
+python -m pytest --cov=src tests/
 ```
 
 ---
