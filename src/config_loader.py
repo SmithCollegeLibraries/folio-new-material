@@ -3,6 +3,8 @@
 import configparser
 from pathlib import Path
 
+from src.subjects import parse_groups_config
+
 
 class ConfigError(Exception):
     """Raised when a required configuration value is missing or invalid."""
@@ -25,6 +27,10 @@ class Config:
                 "Copy config.ini.example to config.ini and fill in your values."
             )
         self._parser = configparser.ConfigParser()
+        # Preserve case in keys so subject-group names like "Engineering"
+        # are not lowercased.  Standard config keys (base_url, etc.) are
+        # written lowercase by convention, so this is safe.
+        self._parser.optionxform = str
         self._parser.read(config_path)
         self._validate()
 
@@ -156,6 +162,12 @@ class Config:
     def accent_color(self) -> str:
         return self._get("output", "accent_color", "#ffffff")
 
+    @property
+    def default_view(self) -> str:
+        """Initial view when the user has no saved preference: 'grid' or 'table'."""
+        raw = self._get("output", "default_view", "grid").lower()
+        return raw if raw in ("grid", "table") else "grid"
+
     # ------------------------------------------------------------------
     # Material types
     # ------------------------------------------------------------------
@@ -173,3 +185,18 @@ class Config:
             for k, v in self._parser.items("material_types")
             if k and v and not k.startswith("#")
         }
+
+    # ------------------------------------------------------------------
+    # Subject groups
+    # ------------------------------------------------------------------
+
+    @property
+    def subject_groups(self) -> dict[str, list[str]]:
+        """
+        Returns a map of group name → list of keywords.
+        Used to classify items by subject heading for grouped display.
+        """
+        if not self._parser.has_section("subject_groups"):
+            return {}
+        raw = dict(self._parser.items("subject_groups"))
+        return parse_groups_config(raw)

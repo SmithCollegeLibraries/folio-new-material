@@ -7,12 +7,33 @@ from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader
 
+from src.subjects import classify_subject, ungrouped_label
+
 logger = logging.getLogger(__name__)
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
 # Identifier type names that indicate an ISBN
 _ISBN_TYPE_NAMES = {"isbn", "isbn-10", "isbn-13"}
+
+# Key used internally to tag an order line with the material UUID we queried
+# with.  Lets us filter reliably even when /orders does not echo back
+# physical.materialType in the response payload.
+_QUERIED_TYPE_KEY = "_queried_material_uuid"
+
+# Curated palette for placeholder covers — picked for legibility on white text
+# and reasonable colour-blind separation.  Items get a stable colour derived
+# from their material-type UUID so the same format always looks the same.
+_PLACEHOLDER_PALETTE = [
+    "#2a5e8c",  # deep blue
+    "#7d3f5d",  # plum
+    "#3a6b50",  # forest
+    "#8a5a2b",  # russet
+    "#5a4b8a",  # indigo
+    "#0f6e6e",  # teal
+    "#8a4040",  # brick
+    "#4a4a4a",  # graphite
+]
 
 
 def build_items(
@@ -43,7 +64,20 @@ def build_items(
         instance = instances.get(instance_id, {})
 
         type_uuid = _material_uuid_from_line(line)
-        type_label = material_types.get(type_uuid, _infer_type_label(instance))
+        type_label = (
+            material_types.get(type_uuid)
+            or _infer_type_label(instance)
+            or "Other"
+        )
+        configured_groups = getattr(config, "subject_groups", {}) or {}
+        subject_group = classify_subject(
+            instance.get("subjects") or [],
+            configured_groups,
+        )
+        # When subject-grouping is enabled but the item matches no group,
+        # tag it as "Other" so it can be filtered/displayed as such.
+        if not subject_group and configured_groups:
+            subject_group = ungrouped_label()
 
         item = {
             "id": line.get("id", instance_id),
@@ -55,7 +89,10 @@ def build_items(
             "receipt_date": _format_date(line.get("receiptDate", "")),
             "type_uuid": type_uuid,
             "type_label": type_label,
+            "subject_group": subject_group or "",
+            "call_number": _call_number(line, instance),
             "cover_url": None,  # populated later by generate.py if images enabled
+            "placeholder_color": _placeholder_color(type_uuid or type_label),
             "eds_url": _eds_url(instance_id, config),
             "isbn": _isbn(instance),
             "oclc": _oclc(instance),
@@ -89,7 +126,7 @@ def generate_html(
     seen_types: dict[str, str] = {}
     for item in items:
         uuid = item["type_uuid"]
-        if uuid not in seen_types:
+        if uuid and uuid not in seen_types:
             seen_types[uuid] = item["type_label"]
 
     # If configured types were given, keep their order; otherwise sort by label
@@ -107,6 +144,19 @@ def generate_html(
         for uuid in active_types
     }
 
+    # Subject groups that actually appear in the item list, in config order.
+    # This keeps the dropdown predictable for staff (matches their config).
+    configured_groups = getattr(config, "subject_groups", None) or {}
+    active_subject_groups: dict[str, int] = {}
+    if configured_groups:
+        for name in configured_groups:
+            count = sum(1 for i in items if i.get("subject_group") == name)
+            if count > 0:
+                active_subject_groups[name] = count
+        other_count = sum(1 for i in items if i.get("subject_group") == ungrouped_label())
+        if other_count > 0:
+            active_subject_groups[ungrouped_label()] = other_count
+
     return template.render(
         title=config.output_title,
         institution_name=config.institution_name,
@@ -119,6 +169,10 @@ def generate_html(
         items=items,
         active_types=active_types,
         counts=counts,
+        subject_groups=active_subject_groups,
+        subject_grouping_enabled=bool(getattr(config, "subject_groups", None)),
+        ungrouped_label=ungrouped_label(),
+        default_view=getattr(config, "default_view", "grid"),
         total_count=len(items),
     )
 
@@ -137,8 +191,39 @@ def write_output(html: str, output_path: str) -> None:
 
 
 def _material_uuid_from_line(line: dict) -> str:
+    """
+    Return the material-type UUID for an order line.
+
+    Prefers the queried UUID tagged by generate.py (always set when we asked
+    for a specific type) so filtering stays accurate even when /orders does
+    not echo physical.materialType in its response.
+    """
+    queried = line.get(_QUERIED_TYPE_KEY)
+    if queried:
+        return queried
     physical = line.get("physical") or {}
     return physical.get("materialType") or physical.get("materialTypeId") or ""
+
+
+def _call_number(line: dict, instance: dict) -> str:
+    """
+    Best-effort call number lookup for display.
+
+    Falls back through the most reliable sources first:
+      1. The order line's physical.location.callNumber
+      2. The instance's first holdings record's callNumber
+      3. Empty string when nothing is available
+    """
+    physical = line.get("physical") or {}
+    loc = physical.get("location") or {}
+    cn = loc.get("callNumber")
+    if cn:
+        return cn
+    for holding in instance.get("holdings") or []:
+        cn = holding.get("callNumber")
+        if cn:
+            return cn
+    return ""
 
 
 def _primary_author(instance: dict) -> str:
@@ -185,6 +270,19 @@ def _oclc(instance: dict) -> Optional[str]:
 def _format_date(iso_date: str) -> str:
     """Return the date portion of an ISO datetime string (YYYY-MM-DD)."""
     return iso_date[:10] if iso_date else ""
+
+
+def _placeholder_color(seed: str) -> str:
+    """
+    Pick a consistent placeholder-cover background colour for a given seed.
+
+    Uses a stable hash of the seed (typically the material-type UUID) so the
+    same format gets the same colour every time the page is regenerated.
+    """
+    if not seed:
+        return _PLACEHOLDER_PALETTE[-1]
+    digest = sum(ord(c) for c in seed)
+    return _PLACEHOLDER_PALETTE[digest % len(_PLACEHOLDER_PALETTE)]
 
 
 def _infer_type_label(instance: dict) -> str:

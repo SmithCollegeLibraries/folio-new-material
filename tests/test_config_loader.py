@@ -100,6 +100,31 @@ class TestMinimalConfig:
         cfg = Config(_write_config(tmp_path, MINIMAL_CONFIG))
         assert cfg.tmdb_enabled is False
 
+    def test_subject_groups_empty_by_default(self, tmp_path):
+        cfg = Config(_write_config(tmp_path, MINIMAL_CONFIG))
+        assert cfg.subject_groups == {}
+
+    def test_default_view_is_grid(self, tmp_path):
+        cfg = Config(_write_config(tmp_path, MINIMAL_CONFIG))
+        assert cfg.default_view == "grid"
+
+    def test_default_view_falls_back_to_grid_on_invalid(self, tmp_path):
+        content = MINIMAL_CONFIG + "\n[output]\ndefault_view = nonsense\n"
+        cfg = Config(_write_config(tmp_path, content))
+        assert cfg.default_view == "grid"
+
+    def test_subject_groups_parses_keywords(self, tmp_path):
+        content = MINIMAL_CONFIG + (
+            "\n[subject_groups]\n"
+            "Engineering = computer, programming\n"
+            "Sciences = biology, chemistry\n"
+        )
+        cfg = Config(_write_config(tmp_path, content))
+        assert cfg.subject_groups == {
+            "Engineering": ["computer", "programming"],
+            "Sciences": ["biology", "chemistry"],
+        }
+
 
 class TestFullConfig:
     def test_folio_values(self, tmp_path):

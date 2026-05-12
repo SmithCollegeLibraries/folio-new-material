@@ -68,6 +68,24 @@ class FolioClient:
         resp.raise_for_status()
         return resp.json()
 
+    def get_material_types(self) -> dict[str, str]:
+        """
+        Fetch every material-type definition from FOLIO and return UUID → name.
+
+        Useful when no [material_types] config is provided — lets the generator
+        show real type names in the dropdown instead of raw UUIDs.
+        """
+        url = f"{self._base_url}/material-types"
+        try:
+            resp = self._get(url, params={"limit": 500})
+            resp.raise_for_status()
+        except Exception as exc:
+            logger.warning("Material-type lookup failed: %s", exc)
+            return {}
+
+        data = resp.json()
+        return {mt["id"]: mt.get("name", "") for mt in data.get("mtypes", []) if mt.get("id")}
+
     def get_instances(self, instance_ids: list[str]) -> dict[str, dict]:
         """
         Fetch instance records from mod-search for a list of UUIDs.

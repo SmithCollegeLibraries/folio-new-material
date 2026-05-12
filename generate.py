@@ -138,6 +138,10 @@ def _fetch_all_order_lines(client: FolioClient, start: str, end: str, config: Co
                 lid = line.get("id")
                 if lid and lid not in seen_ids:
                     seen_ids.add(lid)
+                    # Tag the line with the queried UUID so the format filter
+                    # works even when /orders does not echo physical.materialType
+                    if mat_uuid:
+                        line["_queried_material_uuid"] = mat_uuid
                     all_lines.append(line)
 
             offset += len(lines)
@@ -238,8 +242,22 @@ def main() -> int:
 
     log.info("Fetched details for %d instances", len(instances))
 
+    # Build the material-type label map.
+    # When the user has configured specific types, use that map directly.
+    # Otherwise, fetch every defined material type from FOLIO so the dropdown
+    # can show real names instead of raw UUIDs.
+    if config.material_types:
+        material_type_map = config.material_types
+    else:
+        try:
+            material_type_map = client.get_material_types()
+            log.info("Discovered %d material types from FOLIO", len(material_type_map))
+        except Exception as exc:
+            log.warning("Could not fetch material types: %s", exc)
+            material_type_map = {}
+
     # Build display items
-    items = build_items(order_lines, instances, config.material_types, config)
+    items = build_items(order_lines, instances, material_type_map, config)
 
     # Optionally enrich with cover images
     _enrich_with_images(items, config, skip=args.no_images)
@@ -249,7 +267,7 @@ def main() -> int:
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
     html = generate_html(
         items=items,
-        material_types=config.material_types,
+        material_types=config.material_types,  # configured-only, drives dropdown ordering
         start_date=start_date,
         end_date=end_date,
         generated_at=generated_at,

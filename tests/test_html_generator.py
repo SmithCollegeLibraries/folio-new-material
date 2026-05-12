@@ -32,6 +32,8 @@ def _config(
     output_title="New Materials",
     institution_name="Test Library",
     institution_logo_url="",
+    subject_groups=None,
+    default_view="grid",
 ):
     cfg = MagicMock()
     cfg.primary_color = primary_color
@@ -44,6 +46,8 @@ def _config(
     cfg.output_title = output_title
     cfg.institution_name = institution_name
     cfg.institution_logo_url = institution_logo_url
+    cfg.subject_groups = subject_groups or {}
+    cfg.default_view = default_view
     return cfg
 
 
@@ -141,6 +145,15 @@ def test_material_uuid_empty_when_no_physical():
     assert _material_uuid_from_line({}) == ""
 
 
+def test_material_uuid_prefers_queried_tag():
+    """generate.py tags lines with the queried UUID; that should win."""
+    line = {
+        "_queried_material_uuid": "queried-uuid",
+        "physical": {"materialType": "other-uuid"},
+    }
+    assert _material_uuid_from_line(line) == "queried-uuid"
+
+
 # ── EDS URL ───────────────────────────────────────────────────────────
 
 
@@ -193,6 +206,31 @@ class TestBuildItems:
         items = build_items([line], {}, {}, _config())
         assert len(items) == 0
 
+    def test_assigns_placeholder_color(self):
+        instances = {SAMPLE_INSTANCE["id"]: SAMPLE_INSTANCE}
+        items = build_items([SAMPLE_ORDER_LINE], instances, {}, _config())
+        assert items[0]["placeholder_color"].startswith("#")
+
+    def test_subject_classification_when_groups_configured(self):
+        cfg = _config(subject_groups={"Sciences": ["chemistry", "biology"]})
+        instance = dict(SAMPLE_INSTANCE, subjects=["Inorganic chemistry"])
+        items = build_items([SAMPLE_ORDER_LINE], {instance["id"]: instance}, {}, cfg)
+        assert items[0]["subject_group"] == "Sciences"
+
+    def test_subject_group_empty_when_no_groups(self):
+        items = build_items(
+            [SAMPLE_ORDER_LINE],
+            {SAMPLE_INSTANCE["id"]: SAMPLE_INSTANCE},
+            {},
+            _config(),
+        )
+        assert items[0]["subject_group"] == ""
+
+    def test_call_number_from_holdings(self):
+        instance = dict(SAMPLE_INSTANCE, holdings=[{"callNumber": "QA76.5"}])
+        items = build_items([SAMPLE_ORDER_LINE], {instance["id"]: instance}, {}, _config())
+        assert items[0]["call_number"] == "QA76.5"
+
 
 # ── generate_html ─────────────────────────────────────────────────────
 
@@ -209,7 +247,10 @@ class TestGenerateHtml:
             "receipt_date": "2024-01-15",
             "type_uuid": "2d72aa13-2451-41fe-afc7-b3dc7c131389",
             "type_label": "Books",
+            "subject_group": "",
+            "call_number": "",
             "cover_url": None,
+            "placeholder_color": "#2a5e8c",
             "eds_url": "https://openurl.ebsco.com/c/abc/openurl?sid=ebsco:plink&id=x",
             "isbn": None,
             "oclc": None,
@@ -244,7 +285,7 @@ class TestGenerateHtml:
 
     def test_contains_filter_script(self):
         html = generate_html([], {}, "2024-01-01", "2024-01-31", "now", _config())
-        assert "type-filter" in html
+        assert "format-filter" in html
         assert "<script>" in html
 
     def test_no_xss_in_title(self):
@@ -252,3 +293,33 @@ class TestGenerateHtml:
         cfg = _config(institution_name='<script>alert("xss")</script>')
         html = generate_html([], {}, "2024-01-01", "2024-01-31", "now", cfg)
         assert "<script>alert" not in html
+
+    def test_renders_subject_filter_when_groups_enabled(self):
+        cfg = _config(subject_groups={"Sciences": ["biology"]})
+        item = self._sample_item(subject_group="Sciences")
+        html = generate_html([item], {}, "2024-01-01", "2024-01-31", "now", cfg)
+        assert 'id="subject-filter"' in html
+        assert "Sciences" in html
+
+    def test_omits_subject_filter_when_groups_disabled(self):
+        item = self._sample_item()
+        html = generate_html([item], {}, "2024-01-01", "2024-01-31", "now", _config())
+        assert 'id="subject-filter"' not in html
+
+    def test_renders_table_view_markup(self):
+        item = self._sample_item()
+        html = generate_html([item], {}, "2024-01-01", "2024-01-31", "now", _config())
+        assert 'id="materials-table"' in html
+        assert 'id="materials-grid"' in html  # both views rendered
+
+    def test_default_view_table_hides_grid(self):
+        cfg = _config(default_view="table")
+        item = self._sample_item()
+        html = generate_html([item], {}, "2024-01-01", "2024-01-31", "now", cfg)
+        # Grid container should have the hidden attribute when table is default
+        assert 'id="materials-grid"\n      class="materials-grid"\n      role="list"\n      aria-label="New materials (grid view)"\n      hidden' in html or 'aria-label="New materials (grid view)"\n      hidden' in html
+
+    def test_placeholder_color_appears_when_no_cover(self):
+        item = self._sample_item(cover_url=None, placeholder_color="#7d3f5d")
+        html = generate_html([item], {}, "2024-01-01", "2024-01-31", "now", _config())
+        assert "#7d3f5d" in html

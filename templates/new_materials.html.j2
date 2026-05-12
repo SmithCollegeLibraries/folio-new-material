@@ -5,59 +5,76 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ title }} — {{ institution_name }}</title>
   <style>
-    /* ── Design tokens ─────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────────────
+       Design tokens
+       ───────────────────────────────────────────────────────────────── */
     :root {
       --color-primary:    {{ primary_color }};
       --color-accent:     {{ accent_color }};
-      --color-bg:         #f5f5f5;
+      --color-bg:         #f4f5f7;
       --color-surface:    #ffffff;
-      --color-border:     #ddd;
-      --color-text:       #222;
-      --color-muted:      #555;
+      --color-surface-alt:#fafbfc;
+      --color-border:     #d6d8db;
+      --color-text:       #1c1d1f;
+      --color-muted:      #5a5d63;
       --color-badge-bg:   #e8ecf0;
+      --color-chip-bg:    #eef2f6;
+      --color-focus:      #1561d2;
       --radius:           6px;
-      --shadow:           0 1px 4px rgba(0,0,0,.12);
-      --font:             system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      --radius-sm:        4px;
+      --shadow-sm:        0 1px 2px rgba(15,18,22,.07);
+      --shadow:           0 2px 8px rgba(15,18,22,.10);
+      --font:             system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      --grid-cols-xl:     6;
+      --grid-cols-lg:     5;
+      --grid-cols-md:     4;
+      --grid-cols-sm:     3;
+      --grid-cols-xs:     2;
     }
 
-    /* ── Reset / base ──────────────────────────────────────────────── */
+    /* Reset / base */
     *, *::before, *::after { box-sizing: border-box; }
     body {
       margin: 0;
       background: var(--color-bg);
       color: var(--color-text);
       font-family: var(--font);
+      font-size: 16px;
       line-height: 1.5;
     }
     a { color: var(--color-primary); }
-    a:focus-visible {
-      outline: 3px solid var(--color-primary);
-      outline-offset: 2px;
-      border-radius: 2px;
-    }
-    img { max-width: 100%; display: block; }
+    a:hover { text-decoration: underline; }
+    img { max-width: 100%; height: auto; display: block; }
+    button { font: inherit; }
 
-    /* ── Skip link ─────────────────────────────────────────────────── */
+    /* Critical fix: [hidden] must beat display: flex/grid on cards */
+    [hidden] { display: none !important; }
+
+    /* Strong, visible focus indicators — public-terminal friendly */
+    :focus-visible {
+      outline: 3px solid var(--color-focus);
+      outline-offset: 2px;
+      border-radius: 3px;
+    }
+
+    /* Skip link */
     .skip-link {
       position: absolute;
       left: -9999px;
-      top: auto;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
     }
     .skip-link:focus {
       position: fixed;
       top: 0; left: 0;
-      width: auto; height: auto;
-      padding: .5rem 1rem;
+      padding: .75rem 1rem;
       background: var(--color-primary);
       color: var(--color-accent);
-      font-weight: bold;
+      font-weight: 700;
       z-index: 9999;
     }
 
-    /* ── Header ────────────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────────────
+       Header
+       ───────────────────────────────────────────────────────────────── */
     .site-header {
       background: var(--color-primary);
       color: var(--color-accent);
@@ -78,102 +95,241 @@
       line-height: 1.2;
     }
     .site-header .header-sub {
-      margin: 0;
-      font-size: .875rem;
-      opacity: .85;
+      margin: .15rem 0 0;
+      font-size: .9rem;
+      opacity: .88;
     }
 
-    /* ── Main content ──────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────────────
+       Layout
+       ───────────────────────────────────────────────────────────────── */
     .site-main {
-      max-width: 1200px;
+      max-width: 1320px;
       margin: 0 auto;
-      padding: 1.5rem;
+      padding: 1.25rem 1.5rem 2rem;
     }
 
-    /* ── Toolbar ────────────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────────────
+       Filter toolbar
+       ───────────────────────────────────────────────────────────────── */
     .toolbar {
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) repeat(3, auto) auto;
+      gap: .75rem;
+      align-items: end;
+      padding: 1rem;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+      margin-bottom: .75rem;
+    }
+    .toolbar-field {
+      display: flex;
+      flex-direction: column;
+      gap: .25rem;
+      min-width: 0;
+    }
+    .toolbar-field label {
+      font-size: .8rem;
+      font-weight: 600;
+      color: var(--color-muted);
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+    .toolbar input[type="search"],
+    .toolbar select {
+      width: 100%;
+      padding: .5rem .6rem;
+      font-size: 1rem;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-surface);
+      min-height: 40px; /* touch target */
+    }
+    .toolbar input[type="search"] {
+      min-width: 200px;
+    }
+
+    .view-toggle {
+      display: inline-flex;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      background: var(--color-surface);
+    }
+    .view-toggle button {
+      border: 0;
+      padding: .5rem .8rem;
+      background: var(--color-surface);
+      color: var(--color-muted);
+      cursor: pointer;
+      min-height: 40px;
+      display: inline-flex;
+      align-items: center;
+      gap: .35rem;
+      font-weight: 500;
+    }
+    .view-toggle button[aria-pressed="true"] {
+      background: var(--color-primary);
+      color: var(--color-accent);
+    }
+    .view-toggle button:not([aria-pressed="true"]):hover {
+      background: var(--color-chip-bg);
+    }
+    .view-toggle svg { width: 18px; height: 18px; fill: currentColor; }
+
+    /* Status row: count + active chips + clear */
+    .status-row {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: 1rem;
-      margin-bottom: 1.25rem;
-      padding: .75rem 1rem;
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius);
-    }
-    .toolbar label {
-      font-weight: 600;
-      white-space: nowrap;
-    }
-    .toolbar select {
-      padding: .35rem .6rem;
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius);
-      font-size: 1rem;
-      background: var(--color-surface);
-      cursor: pointer;
-    }
-    .toolbar select:focus-visible {
-      outline: 3px solid var(--color-primary);
-      outline-offset: 2px;
+      gap: .5rem 1rem;
+      margin: .5rem 0 1rem;
     }
     .results-count {
-      margin-left: auto;
+      font-weight: 600;
       color: var(--color-muted);
-      font-size: .9rem;
     }
+    .active-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .35rem;
+      align-items: center;
+    }
+    .filter-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: .35rem;
+      padding: .25rem .6rem;
+      background: var(--color-chip-bg);
+      border: 1px solid var(--color-border);
+      border-radius: 999px;
+      font-size: .85rem;
+      color: var(--color-text);
+    }
+    .filter-chip button {
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      font-size: 1.1rem;
+      line-height: 1;
+      padding: 0 0 0 .15rem;
+      color: var(--color-muted);
+    }
+    .filter-chip button:hover { color: var(--color-text); }
+    .clear-filters {
+      border: 0;
+      background: transparent;
+      color: var(--color-primary);
+      font-weight: 600;
+      cursor: pointer;
+      padding: .25rem .5rem;
+    }
+    .clear-filters[hidden] { display: none !important; }
 
-    /* ── Materials grid ────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────────────
+       Grid view
+       ───────────────────────────────────────────────────────────────── */
     .materials-grid {
       list-style: none;
       margin: 0;
       padding: 0;
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      grid-template-columns: repeat(var(--grid-cols-xl), 1fr);
       gap: 1.25rem;
+      align-items: end; /* bottom-align cards within each row */
     }
 
-    /* ── Card ───────────────────────────────────────────────────────── */
+    @media (max-width: 1280px) {
+      .materials-grid { grid-template-columns: repeat(var(--grid-cols-lg), 1fr); }
+    }
+    @media (max-width: 1024px) {
+      .materials-grid { grid-template-columns: repeat(var(--grid-cols-md), 1fr); }
+    }
+    @media (max-width: 768px) {
+      .materials-grid { grid-template-columns: repeat(var(--grid-cols-sm), 1fr); }
+    }
+    @media (max-width: 480px) {
+      .materials-grid { grid-template-columns: repeat(var(--grid-cols-xs), 1fr); }
+    }
+
     .material-card {
       background: var(--color-surface);
       border: 1px solid var(--color-border);
       border-radius: var(--radius);
-      box-shadow: var(--shadow);
+      box-shadow: var(--shadow-sm);
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      transition: box-shadow .15s ease;
+      transition: box-shadow .15s ease, transform .15s ease;
     }
-    .material-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.16); }
+    .material-card:hover {
+      box-shadow: var(--shadow);
+      transform: translateY(-1px);
+    }
+    .material-card:focus-within {
+      box-shadow: 0 0 0 3px var(--color-focus);
+    }
 
-    .card-cover {
-      width: 100%;
-      aspect-ratio: 2 / 3;
-      object-fit: cover;
-      background: var(--color-badge-bg);
-    }
-    .card-cover-placeholder {
-      width: 100%;
-      aspect-ratio: 2 / 3;
-      background: var(--color-badge-bg);
+    .card-cover-wrap {
       display: flex;
-      align-items: center;
       justify-content: center;
-      color: var(--color-muted);
-      font-size: .8rem;
+      align-items: center;
+      padding: .5rem;
+      background: var(--color-surface-alt);
+      border-bottom: 1px solid var(--color-border);
+      min-height: 80px;
+    }
+    .card-cover {
+      max-width: 100%;
+      max-height: 240px;
+      width: auto;
+      height: auto;
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* Placeholder cover — colour-coded by hashed material type */
+    .card-placeholder {
+      width: 100%;
+      aspect-ratio: 2 / 3;
+      max-height: 240px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: .75rem;
+      color: #fff;
+      background: var(--placeholder-color, #5a6c7d);
+      text-align: left;
+      box-shadow: var(--shadow-sm);
+    }
+    .card-placeholder .ph-type {
+      font-size: .7rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      opacity: .9;
+    }
+    .card-placeholder .ph-title {
+      font-size: .95rem;
+      font-weight: 600;
+      line-height: 1.25;
+      display: -webkit-box;
+      -webkit-line-clamp: 5;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
 
     .card-body {
-      padding: .75rem;
+      padding: .75rem .85rem .9rem;
       flex: 1;
       display: flex;
       flex-direction: column;
-      gap: .25rem;
+      gap: .2rem;
     }
     .card-title {
       margin: 0;
-      font-size: 1rem;
+      font-size: .95rem;
       font-weight: 600;
       line-height: 1.3;
     }
@@ -182,57 +338,132 @@
       color: var(--color-text);
     }
     .card-title a:hover { text-decoration: underline; }
-    .card-author {
+    .card-author,
+    .card-publisher,
+    .card-callno {
       margin: 0;
-      font-size: .875rem;
+      font-size: .82rem;
       color: var(--color-muted);
     }
-    .card-publisher {
-      margin: 0;
-      font-size: .8rem;
-      color: var(--color-muted);
-    }
+    .card-callno { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
     .card-meta {
       margin-top: auto;
-      padding-top: .5rem;
+      padding-top: .55rem;
       display: flex;
       align-items: center;
       flex-wrap: wrap;
-      gap: .4rem;
+      gap: .35rem;
     }
     .badge {
       display: inline-block;
-      padding: .2rem .5rem;
+      padding: .15rem .5rem;
       border-radius: 4px;
-      font-size: .75rem;
-      font-weight: 600;
+      font-size: .72rem;
+      font-weight: 700;
       background: var(--color-badge-bg);
       color: var(--color-primary);
+      letter-spacing: .02em;
+      text-transform: uppercase;
+    }
+    .badge-subject {
+      background: transparent;
+      color: var(--color-muted);
+      border: 1px solid var(--color-border);
     }
     .card-received {
       margin: 0;
+      margin-left: auto;
       font-size: .75rem;
       color: var(--color-muted);
+      white-space: nowrap;
     }
 
-    /* ── Empty state ────────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────────────
+       Table view
+       ───────────────────────────────────────────────────────────────── */
+    .materials-table-wrap {
+      overflow-x: auto;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+    }
+    .materials-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .92rem;
+    }
+    .materials-table th,
+    .materials-table td {
+      padding: .65rem .85rem;
+      border-bottom: 1px solid var(--color-border);
+      text-align: left;
+      vertical-align: top;
+    }
+    .materials-table thead th {
+      background: var(--color-surface-alt);
+      font-weight: 700;
+      color: var(--color-muted);
+      font-size: .8rem;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+      position: sticky;
+      top: 0;
+    }
+    .materials-table tbody tr:hover { background: var(--color-chip-bg); }
+    .materials-table .col-cover { width: 60px; }
+    .materials-table .col-cover img {
+      width: 48px;
+      height: auto;
+      max-height: 72px;
+      box-shadow: var(--shadow-sm);
+    }
+    .materials-table .col-cover .ph-mini {
+      width: 48px;
+      aspect-ratio: 2 / 3;
+      background: var(--placeholder-color, #5a6c7d);
+      border-radius: 3px;
+    }
+    .materials-table .row-title {
+      font-weight: 600;
+      color: var(--color-text);
+      text-decoration: none;
+    }
+    .materials-table .row-title:hover { text-decoration: underline; }
+    .materials-table .col-meta {
+      color: var(--color-muted);
+      font-size: .85rem;
+    }
+    .materials-table .col-date { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+    /* ─────────────────────────────────────────────────────────────────
+       Empty state
+       ───────────────────────────────────────────────────────────────── */
     .empty-state {
       text-align: center;
       padding: 3rem 1rem;
+      background: var(--color-surface);
+      border: 1px dashed var(--color-border);
+      border-radius: var(--radius);
       color: var(--color-muted);
     }
+    .empty-state strong { color: var(--color-text); display: block; margin-bottom: .25rem; }
 
-    /* ── Footer ─────────────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────────────
+       Footer
+       ───────────────────────────────────────────────────────────────── */
     .site-footer {
       margin-top: 2.5rem;
       padding: 1rem 1.5rem;
       border-top: 1px solid var(--color-border);
-      font-size: .8rem;
+      font-size: .85rem;
       color: var(--color-muted);
       text-align: center;
     }
+    .site-footer .updated { font-weight: 600; color: var(--color-text); }
 
-    /* ── Screen-reader only ─────────────────────────────────────────── */
+    /* Screen-reader only */
     .sr-only {
       position: absolute;
       width: 1px; height: 1px;
@@ -243,10 +474,34 @@
       border: 0;
     }
 
-    /* ── Responsive ─────────────────────────────────────────────────── */
-    @media (max-width: 480px) {
-      .materials-grid { grid-template-columns: 1fr 1fr; }
-      .site-header h1 { font-size: 1.2rem; }
+    /* ─────────────────────────────────────────────────────────────────
+       Responsive toolbar
+       ───────────────────────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .toolbar {
+        grid-template-columns: 1fr 1fr;
+      }
+      .toolbar .toolbar-field-search { grid-column: 1 / -1; }
+      .view-toggle { grid-column: 1 / -1; justify-self: start; }
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+       Print stylesheet
+       ───────────────────────────────────────────────────────────────── */
+    @media print {
+      body { background: #fff; }
+      .toolbar, .status-row, .view-toggle, .skip-link { display: none !important; }
+      .site-header { background: #fff; color: #000; border-bottom: 2px solid #000; }
+      .site-header h1 { color: #000; }
+      .material-card, .materials-table-wrap {
+        box-shadow: none;
+        border: 1px solid #000;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .materials-grid { grid-template-columns: repeat(3, 1fr); gap: .5rem; }
+      a { color: #000; text-decoration: none; }
+      a[href]::after { content: ""; } /* don't print URLs */
     }
   </style>
 </head>
@@ -261,71 +516,126 @@
     <div>
       <h1>{{ title }}</h1>
       <p class="header-sub">
-        {{ institution_name }} &mdash;
+        {{ institution_name }} &middot;
         <span aria-label="date range">{{ start_date }} to {{ end_date }}</span>
+        &middot;
+        <span aria-label="total items">{{ total_count }} item{{ 's' if total_count != 1 else '' }}</span>
       </p>
     </div>
   </header>
 
   <main id="main-content" class="site-main">
 
-    <nav aria-label="Filter materials">
-      <div class="toolbar">
-        <label for="type-filter">Format:</label>
-        <select
-          id="type-filter"
-          aria-controls="materials-grid"
-          aria-label="Filter by material format">
-          <option value="all">All Formats ({{ total_count }})</option>
+    {# ── Filter toolbar ─────────────────────────────────────────── #}
+    <form class="toolbar" role="search" aria-label="Filter and sort new materials" onsubmit="return false;">
+      <div class="toolbar-field toolbar-field-search">
+        <label for="search-input">Search title or author</label>
+        <input
+          id="search-input"
+          type="search"
+          placeholder="Type to filter…"
+          autocomplete="off">
+      </div>
+
+      <div class="toolbar-field">
+        <label for="format-filter">Format</label>
+        <select id="format-filter" aria-controls="materials-grid materials-table">
+          <option value="all">All formats</option>
           {% for uuid, label in active_types.items() %}
           <option value="{{ uuid }}">{{ label }} ({{ counts[uuid] }})</option>
           {% endfor %}
         </select>
-        <p class="results-count" id="results-count" aria-live="polite" aria-atomic="true">
-          Showing {{ total_count }} item{{ 's' if total_count != 1 else '' }}
-        </p>
       </div>
-    </nav>
+
+      {% if subject_grouping_enabled %}
+      <div class="toolbar-field">
+        <label for="subject-filter">Subject area</label>
+        <select id="subject-filter" aria-controls="materials-grid materials-table">
+          <option value="all">All subjects</option>
+          {% for group, count in subject_groups.items() %}
+          <option value="{{ group }}">{{ group }} ({{ count }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+
+      <div class="toolbar-field">
+        <label for="sort-select">Sort by</label>
+        <select id="sort-select" aria-controls="materials-grid materials-table">
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="title-asc">Title A → Z</option>
+          <option value="title-desc">Title Z → A</option>
+        </select>
+      </div>
+
+      <div class="view-toggle" role="group" aria-label="Display mode">
+        <button type="button" data-view="grid" aria-pressed="{{ 'true' if default_view == 'grid' else 'false' }}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg>
+          Grid
+        </button>
+        <button type="button" data-view="table" aria-pressed="{{ 'true' if default_view == 'table' else 'false' }}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v3H3V5zm0 5h18v3H3v-3zm0 5h18v3H3v-3z"/></svg>
+          Table
+        </button>
+      </div>
+    </form>
+
+    {# ── Status row ─────────────────────────────────────────────── #}
+    <div class="status-row">
+      <span class="results-count" id="results-count" aria-live="polite" aria-atomic="true">
+        Showing {{ total_count }} item{{ 's' if total_count != 1 else '' }}
+      </span>
+      <div class="active-filters" id="active-filters" aria-label="Active filters"></div>
+      <button class="clear-filters" id="clear-filters" type="button" hidden>Clear all</button>
+    </div>
 
     {% if items %}
+
+    {# ── Grid view ─────────────────────────────────────────────── #}
     <ul
       id="materials-grid"
       class="materials-grid"
       role="list"
-      aria-label="New materials">
+      aria-label="New materials (grid view)"
+      {% if default_view != 'grid' %}hidden{% endif %}>
       {% for item in items %}
       <li
-        class="material-card"
+        class="material-card filterable-item"
         data-type="{{ item.type_uuid }}"
-        aria-label="{{ item.title }}{% if item.author %} by {{ item.author }}{% endif %}">
-        <article>
-          {% if item.cover_url %}
-          <img
-            class="card-cover"
-            src="{{ item.cover_url }}"
-            alt="Cover of {{ item.title }}"
-            loading="lazy"
-            width="240"
-            height="360">
-          {% else %}
-          <div class="card-cover-placeholder" aria-hidden="true">No cover</div>
-          {% endif %}
+        data-type-label="{{ item.type_label }}"
+        data-subject="{{ item.subject_group }}"
+        data-title="{{ item.title | lower }}"
+        data-author="{{ item.author | lower }}"
+        data-date="{{ item.receipt_date }}">
+        <article aria-labelledby="grid-title-{{ loop.index }}">
+          <div class="card-cover-wrap">
+            {% if item.cover_url %}
+            <img
+              class="card-cover"
+              src="{{ item.cover_url }}"
+              alt="Cover of {{ item.title }}"
+              loading="lazy">
+            {% else %}
+            <div class="card-placeholder"
+                 style="--placeholder-color: {{ item.placeholder_color }};"
+                 aria-hidden="true">
+              <span class="ph-type">{{ item.type_label }}</span>
+              <span class="ph-title">{{ item.title }}</span>
+            </div>
+            {% endif %}
+          </div>
 
           <div class="card-body">
-            <h2 class="card-title" id="item-{{ loop.index }}">
+            <h2 class="card-title" id="grid-title-{{ loop.index }}">
               {% if item.eds_url %}
-              <a href="{{ item.eds_url }}"
-                 aria-labelledby="item-{{ loop.index }}"
-                 target="_blank"
-                 rel="noopener noreferrer">{{ item.title }}</a>
+              <a href="{{ item.eds_url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
               {% else %}
               {{ item.title }}
               {% endif %}
             </h2>
 
-            {% if item.author %}
-            <p class="card-author">{{ item.author }}</p>
-            {% endif %}
+            {% if item.author %}<p class="card-author">{{ item.author }}</p>{% endif %}
 
             {% if item.publisher or item.year %}
             <p class="card-publisher">
@@ -335,12 +645,19 @@
             </p>
             {% endif %}
 
+            {% if item.call_number %}
+            <p class="card-callno">{{ item.call_number }}</p>
+            {% endif %}
+
             <div class="card-meta">
               <span class="badge">{{ item.type_label }}</span>
+              {% if item.subject_group %}
+              <span class="badge badge-subject">{{ item.subject_group }}</span>
+              {% endif %}
               {% if item.receipt_date %}
-              <p class="card-received">
+              <span class="card-received" title="Received">
                 <span class="sr-only">Received: </span>{{ item.receipt_date }}
-              </p>
+              </span>
               {% endif %}
             </div>
           </div>
@@ -349,50 +666,242 @@
       {% endfor %}
     </ul>
 
+    {# ── Table view ────────────────────────────────────────────── #}
+    <div
+      id="materials-table-wrap"
+      class="materials-table-wrap"
+      {% if default_view != 'table' %}hidden{% endif %}>
+      <table id="materials-table" class="materials-table" aria-label="New materials (table view)">
+        <thead>
+          <tr>
+            <th scope="col" class="col-cover"><span class="sr-only">Cover</span></th>
+            <th scope="col">Title</th>
+            <th scope="col" class="col-meta">Author</th>
+            <th scope="col" class="col-meta">Format</th>
+            {% if subject_grouping_enabled %}<th scope="col" class="col-meta">Subject</th>{% endif %}
+            <th scope="col" class="col-meta">Call number</th>
+            <th scope="col" class="col-meta col-date">Received</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr
+            class="material-row filterable-item"
+            data-type="{{ item.type_uuid }}"
+            data-type-label="{{ item.type_label }}"
+            data-subject="{{ item.subject_group }}"
+            data-title="{{ item.title | lower }}"
+            data-author="{{ item.author | lower }}"
+            data-date="{{ item.receipt_date }}">
+            <td class="col-cover">
+              {% if item.cover_url %}
+              <img src="{{ item.cover_url }}" alt="" loading="lazy">
+              {% else %}
+              <div class="ph-mini" style="--placeholder-color: {{ item.placeholder_color }};" aria-hidden="true"></div>
+              {% endif %}
+            </td>
+            <td>
+              {% if item.eds_url %}
+              <a class="row-title" href="{{ item.eds_url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
+              {% else %}
+              <span class="row-title">{{ item.title }}</span>
+              {% endif %}
+              {% if item.publisher or item.year %}
+                <div class="col-meta">
+                  {% if item.publisher %}{{ item.publisher }}{% endif %}
+                  {% if item.publisher and item.year %}, {% endif %}
+                  {% if item.year %}{{ item.year }}{% endif %}
+                </div>
+              {% endif %}
+            </td>
+            <td class="col-meta">{{ item.author }}</td>
+            <td class="col-meta">{{ item.type_label }}</td>
+            {% if subject_grouping_enabled %}
+              <td class="col-meta">{{ item.subject_group }}</td>
+            {% endif %}
+            <td class="col-meta">{{ item.call_number }}</td>
+            <td class="col-meta col-date">{{ item.receipt_date }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
     <p id="no-results" class="empty-state" hidden aria-live="polite">
-      No items match the selected format.
+      <strong>No matching items</strong>
+      Try clearing one of the filters above.
     </p>
+
     {% else %}
     <div class="empty-state" role="status">
-      <p>No new materials were found for this date range.</p>
+      <strong>No new materials in this date range</strong>
+      Try a wider date window or check FOLIO for receipt status updates.
     </div>
     {% endif %}
 
   </main>
 
   <footer class="site-footer" role="contentinfo">
-    <p>Generated {{ generated_at }} &bull; {{ institution_name }}</p>
+    <p>
+      <span class="updated">Last updated:</span> {{ generated_at }}
+      &middot; {{ institution_name }}
+    </p>
   </footer>
 
   <script>
   (function () {
     'use strict';
 
-    var select   = document.getElementById('type-filter');
-    var counter  = document.getElementById('results-count');
-    var noResult = document.getElementById('no-results');
-    var cards    = Array.prototype.slice.call(
-                     document.querySelectorAll('#materials-grid .material-card'));
+    var STORAGE_KEY = 'folio-new-materials:view';
 
-    if (!select || !cards.length) { return; }
+    var searchInput   = document.getElementById('search-input');
+    var formatSelect  = document.getElementById('format-filter');
+    var subjectSelect = document.getElementById('subject-filter'); // may be null
+    var sortSelect    = document.getElementById('sort-select');
+    var viewButtons   = document.querySelectorAll('.view-toggle button');
+    var clearBtn      = document.getElementById('clear-filters');
+    var chipsHost     = document.getElementById('active-filters');
+    var counter       = document.getElementById('results-count');
+    var noResults     = document.getElementById('no-results');
 
-    select.addEventListener('change', function () {
-      var chosen = this.value;
+    var grid          = document.getElementById('materials-grid');
+    var tableWrap     = document.getElementById('materials-table-wrap');
+    var tableBody     = tableWrap ? tableWrap.querySelector('tbody') : null;
+
+    var cards         = grid ? Array.prototype.slice.call(grid.querySelectorAll('.material-card')) : [];
+    var rows          = tableBody ? Array.prototype.slice.call(tableBody.querySelectorAll('.material-row')) : [];
+
+    // ── View toggle ────────────────────────────────────────────────
+    function setView(view) {
+      if (view !== 'grid' && view !== 'table') view = 'grid';
+      if (grid) grid.hidden = view !== 'grid';
+      if (tableWrap) tableWrap.hidden = view !== 'table';
+      viewButtons.forEach(function (btn) {
+        btn.setAttribute('aria-pressed', btn.dataset.view === view ? 'true' : 'false');
+      });
+      try { localStorage.setItem(STORAGE_KEY, view); } catch (e) { /* ignore */ }
+    }
+
+    viewButtons.forEach(function (btn) {
+      btn.addEventListener('click', function () { setView(btn.dataset.view); });
+    });
+
+    try {
+      var saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) setView(saved);
+    } catch (e) { /* ignore */ }
+
+    // ── Filtering ──────────────────────────────────────────────────
+    function getState() {
+      return {
+        search:  (searchInput.value || '').trim().toLowerCase(),
+        format:  formatSelect.value,
+        subject: subjectSelect ? subjectSelect.value : 'all'
+      };
+    }
+
+    function matches(el, state) {
+      if (state.format !== 'all' && el.dataset.type !== state.format) return false;
+      if (state.subject !== 'all' && el.dataset.subject !== state.subject) return false;
+      if (state.search) {
+        var hay = el.dataset.title + ' ' + el.dataset.author;
+        if (hay.indexOf(state.search) === -1) return false;
+      }
+      return true;
+    }
+
+    function applyFilters() {
+      var state = getState();
       var visible = 0;
 
       cards.forEach(function (card) {
-        var show = chosen === 'all' || card.dataset.type === chosen;
+        var show = matches(card, state);
         card.hidden = !show;
-        if (show) { visible++; }
+        if (show) visible++;
+      });
+      rows.forEach(function (row) {
+        row.hidden = !matches(row, state);
       });
 
-      counter.textContent =
-        'Showing ' + visible + ' item' + (visible !== 1 ? 's' : '');
+      counter.textContent = 'Showing ' + visible + ' item' + (visible !== 1 ? 's' : '');
+      if (noResults) noResults.hidden = visible > 0;
 
-      if (noResult) {
-        noResult.hidden = visible > 0;
+      renderChips(state);
+    }
+
+    function renderChips(state) {
+      chipsHost.innerHTML = '';
+      var any = false;
+
+      function addChip(label, onClear) {
+        any = true;
+        var chip = document.createElement('span');
+        chip.className = 'filter-chip';
+        chip.textContent = label + ' ';
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.setAttribute('aria-label', 'Remove filter ' + label);
+        b.textContent = '×';
+        b.addEventListener('click', onClear);
+        chip.appendChild(b);
+        chipsHost.appendChild(chip);
       }
-    });
+
+      if (state.format !== 'all') {
+        var opt = formatSelect.options[formatSelect.selectedIndex];
+        addChip('Format: ' + opt.text.replace(/\s*\(\d+\)$/, ''), function () {
+          formatSelect.value = 'all'; applyFilters();
+        });
+      }
+      if (subjectSelect && state.subject !== 'all') {
+        var s = subjectSelect.options[subjectSelect.selectedIndex];
+        addChip('Subject: ' + s.text.replace(/\s*\(\d+\)$/, ''), function () {
+          subjectSelect.value = 'all'; applyFilters();
+        });
+      }
+      if (state.search) {
+        addChip('Search: "' + state.search + '"', function () {
+          searchInput.value = ''; applyFilters();
+        });
+      }
+
+      clearBtn.hidden = !any;
+    }
+
+    function clearAll() {
+      searchInput.value = '';
+      formatSelect.value = 'all';
+      if (subjectSelect) subjectSelect.value = 'all';
+      applyFilters();
+    }
+
+    // ── Sorting ────────────────────────────────────────────────────
+    function compareItems(a, b, mode) {
+      if (mode === 'newest')     return (b.dataset.date || '').localeCompare(a.dataset.date || '');
+      if (mode === 'oldest')     return (a.dataset.date || '').localeCompare(b.dataset.date || '');
+      if (mode === 'title-asc')  return (a.dataset.title || '').localeCompare(b.dataset.title || '');
+      if (mode === 'title-desc') return (b.dataset.title || '').localeCompare(a.dataset.title || '');
+      return 0;
+    }
+
+    function applySort() {
+      var mode = sortSelect.value;
+      if (grid) {
+        var sortedCards = cards.slice().sort(function (a, b) { return compareItems(a, b, mode); });
+        sortedCards.forEach(function (el) { grid.appendChild(el); });
+      }
+      if (tableBody) {
+        var sortedRows = rows.slice().sort(function (a, b) { return compareItems(a, b, mode); });
+        sortedRows.forEach(function (el) { tableBody.appendChild(el); });
+      }
+    }
+
+    // ── Wire up ────────────────────────────────────────────────────
+    if (searchInput)   searchInput.addEventListener('input', applyFilters);
+    if (formatSelect)  formatSelect.addEventListener('change', applyFilters);
+    if (subjectSelect) subjectSelect.addEventListener('change', applyFilters);
+    if (sortSelect)    sortSelect.addEventListener('change', applySort);
+    if (clearBtn)      clearBtn.addEventListener('click', clearAll);
   }());
   </script>
 
