@@ -36,7 +36,12 @@ from src.config_loader import Config, ConfigError
 from src.folio_client import FolioClient, FolioAuthError
 from src.google_images import fetch_cover_image
 from src.tmdb_client import fetch_tmdb_poster
-from src.html_generator import build_items, generate_html, write_output
+from src.html_generator import (
+    build_items,
+    generate_html,
+    write_output,
+    build_data_envelope,
+)
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -274,15 +279,25 @@ def main() -> int:
         config=config,
     )
 
-    # Write output
+    # Write output: HTML + assets/ + data/items.json
     output_path = args.output or config.output_file
+    envelope = build_data_envelope(
+        items=items,
+        start_date=start_date,
+        end_date=end_date,
+        generated_at=generated_at,
+        institution_name=config.institution_name,
+    )
     try:
-        write_output(html, output_path)
+        write_output(html, output_path, envelope=envelope)
     except OSError as exc:
         log.error("Failed to write output: %s", exc)
         return 1
 
-    log.info("Done — %d items written to %s", len(items), output_path)
+    log.info(
+        "Done — %d items written to %s (plus assets/ and data/items.json)",
+        len(items), output_path,
+    )
     return 0
 
 

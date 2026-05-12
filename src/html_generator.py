@@ -1,7 +1,9 @@
 """HTML5 output generation for FOLIO New Materials."""
 
+import json
 import logging
 import re
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -11,7 +13,9 @@ from src.subjects import classify_subject, ungrouped_label
 
 logger = logging.getLogger(__name__)
 
-_TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+_PROJECT_ROOT = Path(__file__).parent.parent
+_TEMPLATES_DIR = _PROJECT_ROOT / "templates"
+_STATIC_DIR = _PROJECT_ROOT / "static"
 
 # Identifier type names that indicate an ISBN
 _ISBN_TYPE_NAMES = {"isbn", "isbn-10", "isbn-13"}
@@ -157,6 +161,19 @@ def generate_html(
         if other_count > 0:
             active_subject_groups[ungrouped_label()] = other_count
 
+    # Embed the items as a JSON string inside <script type="application/json">.
+    # The escape pass below prevents an item's title/author from breaking
+    # out of the script tag (XSS) — even though all string content is also
+    # autoescaped when interpolated into the DOM by app.js.
+    envelope = build_data_envelope(
+        items=items,
+        start_date=start_date,
+        end_date=end_date,
+        generated_at=generated_at,
+        institution_name=config.institution_name,
+    )
+    items_json = _safe_json_for_html(envelope)
+
     return template.render(
         title=config.output_title,
         institution_name=config.institution_name,
@@ -167,6 +184,7 @@ def generate_html(
         end_date=end_date,
         generated_at=generated_at,
         items=items,
+        items_json=items_json,
         active_types=active_types,
         counts=counts,
         subject_groups=active_subject_groups,
@@ -177,12 +195,109 @@ def generate_html(
     )
 
 
-def write_output(html: str, output_path: str) -> None:
-    """Write the rendered HTML to disk, creating parent directories as needed."""
+def build_data_envelope(
+    items: list[dict],
+    start_date: str,
+    end_date: str,
+    generated_at: str,
+    institution_name: str,
+) -> dict:
+    """
+    Build the JSON envelope that wraps the items array.
+
+    The envelope adds machine-readable metadata so programmatic consumers
+    (RSS bridges, dashboards, analytics) have context without parsing the HTML.
+    """
+    return {
+        "generated_at":     generated_at,
+        "date_range":       {"start": start_date, "end": end_date},
+        "institution":      institution_name,
+        "total_count":      len(items),
+        "items":            items,
+    }
+
+
+def write_assets(output_html_path: str) -> None:
+    """
+    Copy CSS and JS from /static to <output>/assets/ so the HTML can link them.
+
+    Called from generate.py once per run; safe to re-run (always overwrites).
+    """
+    out_dir = Path(output_html_path).parent
+    assets_dir = out_dir / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    for filename in ("styles.css", "app.js"):
+        src = _STATIC_DIR / filename
+        if not src.exists():
+            logger.warning("Static asset missing: %s", src)
+            continue
+        shutil.copy2(src, assets_dir / filename)
+    logger.debug("Assets copied to %s", assets_dir)
+
+
+def write_json_data(envelope: dict, output_html_path: str) -> None:
+    """
+    Write items.json alongside the HTML so RSS bridges and other consumers
+    can read the data without parsing markup.
+
+    The HTML also embeds the same JSON inline, so this file is purely for
+    programmatic clients.
+    """
+    out_dir = Path(output_html_path).parent
+    data_dir = out_dir / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    json_path = data_dir / "items.json"
+    json_path.write_text(
+        json.dumps(envelope, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    logger.debug("Item data written to %s", json_path)
+
+
+def _safe_json_for_html(data: dict) -> str:
+    """
+    Serialise a dict to a JSON string that is safe to embed inside a
+    <script type="application/json"> block.
+
+    The escape pattern below blocks three attack vectors:
+      </script>  → script-tag breakout
+      <!--       → HTML-comment context confusion
+      U+2028 /29 → JS line-terminator quirks in legacy parsers
+    """
+    raw = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    return (
+        raw.replace("<", "\\u003c")
+           .replace(">", "\\u003e")
+           .replace("&", "\\u0026")
+           .replace(" ", "\\u2028")
+           .replace(" ", "\\u2029")
+    )
+
+
+def write_output(
+    html: str,
+    output_path: str,
+    *,
+    envelope: Optional[dict] = None,
+) -> None:
+    """
+    Write the rendered HTML to disk and (optionally) the parallel JSON and assets.
+
+    Args:
+        html:         Rendered HTML string.
+        output_path:  Path for the main HTML file.
+        envelope:     If provided, also write data/items.json and copy
+                      assets/ (styles.css, app.js) into the same directory.
+                      Pass None when generating a single-file standalone HTML.
+    """
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(html, encoding="utf-8")
-    logger.info("Output written to %s", path.resolve())
+    logger.info("HTML written to %s", path.resolve())
+
+    if envelope is not None:
+        write_assets(output_path)
+        write_json_data(envelope, output_path)
 
 
 # ------------------------------------------------------------------

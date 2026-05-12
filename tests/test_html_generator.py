@@ -4,9 +4,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import json
+
 from src.html_generator import (
     build_items,
     generate_html,
+    build_data_envelope,
+    write_output,
+    write_assets,
+    write_json_data,
+    _safe_json_for_html,
     _eds_url,
     _primary_author,
     _publisher,
@@ -259,23 +266,37 @@ class TestGenerateHtml:
         return base
 
     def test_renders_valid_html(self):
+        # Items are no longer rendered as HTML; they live in the embedded JSON
+        # block and are populated into the DOM by app.js at view time.
         items = [self._sample_item()]
         types = {"2d72aa13-2451-41fe-afc7-b3dc7c131389": "Books"}
         html = generate_html(items, types, "2024-01-01", "2024-01-31", "2024-02-01 06:00", _config())
 
         assert "<!DOCTYPE html>" in html
+        # Title appears in the embedded JSON
         assert "Test Book" in html
         assert "Author Name" in html
-        assert "Books" in html
+        # External assets are linked, not inlined
+        assert 'href="assets/styles.css"' in html
+        assert 'src="assets/app.js"' in html
+        assert 'id="items-data"' in html
 
     def test_renders_empty_state_when_no_items(self):
         html = generate_html([], {}, "2024-01-01", "2024-01-31", "2024-02-01 06:00", _config())
         assert "No new materials" in html
 
+    def test_includes_noscript_fallback(self):
+        items = [self._sample_item()]
+        types = {"2d72aa13-2451-41fe-afc7-b3dc7c131389": "Books"}
+        html = generate_html(items, types, "2024-01-01", "2024-01-31", "now", _config())
+        assert "<noscript>" in html
+        assert "data/items.json" in html
+
     def test_includes_eds_link(self):
         items = [self._sample_item()]
         types = {"2d72aa13-2451-41fe-afc7-b3dc7c131389": "Books"}
         html = generate_html(items, types, "2024-01-01", "2024-01-31", "2024-02-01 06:00", _config())
+        # EDS URL appears in embedded JSON
         assert "openurl.ebsco.com" in html
 
     def test_includes_institution_name(self):
@@ -286,7 +307,8 @@ class TestGenerateHtml:
     def test_contains_filter_script(self):
         html = generate_html([], {}, "2024-01-01", "2024-01-31", "now", _config())
         assert "format-filter" in html
-        assert "<script>" in html
+        # JS is loaded externally now
+        assert 'src="assets/app.js"' in html
 
     def test_no_xss_in_title(self):
         """User-supplied config values must be escaped in HTML output."""
@@ -306,20 +328,100 @@ class TestGenerateHtml:
         html = generate_html([item], {}, "2024-01-01", "2024-01-31", "now", _config())
         assert 'id="subject-filter"' not in html
 
-    def test_renders_table_view_markup(self):
+    def test_renders_both_view_containers(self):
         item = self._sample_item()
         html = generate_html([item], {}, "2024-01-01", "2024-01-31", "now", _config())
+        # Empty containers that JS will populate
         assert 'id="materials-table"' in html
-        assert 'id="materials-grid"' in html  # both views rendered
+        assert 'id="materials-grid"' in html
 
-    def test_default_view_table_hides_grid(self):
+    def test_default_view_table_hides_grid_container(self):
         cfg = _config(default_view="table")
         item = self._sample_item()
         html = generate_html([item], {}, "2024-01-01", "2024-01-31", "now", cfg)
-        # Grid container should have the hidden attribute when table is default
-        assert 'id="materials-grid"\n      class="materials-grid"\n      role="list"\n      aria-label="New materials (grid view)"\n      hidden' in html or 'aria-label="New materials (grid view)"\n      hidden' in html
+        # Grid container has the hidden attribute when table is default view
+        assert 'aria-label="New materials (grid view)"' in html
+        # Verify hidden attribute follows the grid container marker
+        grid_start = html.find('aria-label="New materials (grid view)"')
+        following = html[grid_start:grid_start + 200]
+        assert "hidden" in following
 
-    def test_placeholder_color_appears_when_no_cover(self):
+    def test_placeholder_color_appears_in_embedded_json(self):
         item = self._sample_item(cover_url=None, placeholder_color="#7d3f5d")
         html = generate_html([item], {}, "2024-01-01", "2024-01-31", "now", _config())
-        assert "#7d3f5d" in html
+        assert "#7d3f5d" in html  # present in the JSON data block
+
+
+# ── Data envelope & write helpers ─────────────────────────────────────
+
+
+class TestBuildDataEnvelope:
+    def test_envelope_structure(self):
+        items = [{"id": "x", "title": "T"}]
+        env = build_data_envelope(items, "2024-01-01", "2024-01-31", "now", "Lib")
+        assert env["total_count"] == 1
+        assert env["date_range"] == {"start": "2024-01-01", "end": "2024-01-31"}
+        assert env["institution"] == "Lib"
+        assert env["items"] == items
+
+
+class TestSafeJsonForHtml:
+    def test_escapes_script_breakout(self):
+        data = {"title": "</script><img>"}
+        out = _safe_json_for_html(data)
+        assert "</script>" not in out
+        assert "\\u003c" in out
+
+    def test_escapes_html_comment_start(self):
+        data = {"title": "<!-- nope"}
+        out = _safe_json_for_html(data)
+        assert "<!--" not in out
+
+    def test_round_trips_through_json_parse(self):
+        # The escaped sequences are valid JSON — parsing should yield the original
+        data = {"a": "</script>", "b": "<!-- "}
+        out = _safe_json_for_html(data)
+        parsed = json.loads(out)
+        assert parsed == data
+
+
+class TestWriteOutput:
+    def _sample_item(self):
+        return {
+            "id": "x", "instance_id": "i", "title": "T",
+            "author": "A", "publisher": "P", "year": "2024",
+            "receipt_date": "2024-01-15", "type_uuid": "u",
+            "type_label": "Books", "subject_group": "",
+            "call_number": "", "cover_url": None,
+            "placeholder_color": "#2a5e8c", "eds_url": None,
+            "isbn": None, "oclc": None,
+        }
+
+    def test_writes_assets_and_json(self, tmp_path):
+        out_html = tmp_path / "out" / "new-materials.html"
+        env = build_data_envelope(
+            [self._sample_item()], "2024-01-01", "2024-01-31", "now", "Lib",
+        )
+        write_output("<html></html>", str(out_html), envelope=env)
+
+        assert out_html.exists()
+        assert (out_html.parent / "assets" / "styles.css").exists()
+        assert (out_html.parent / "assets" / "app.js").exists()
+        assert (out_html.parent / "data" / "items.json").exists()
+
+    def test_json_file_is_valid_json(self, tmp_path):
+        out_html = tmp_path / "out" / "new-materials.html"
+        env = build_data_envelope(
+            [self._sample_item()], "2024-01-01", "2024-01-31", "now", "Lib",
+        )
+        write_output("<html></html>", str(out_html), envelope=env)
+
+        data = json.loads((out_html.parent / "data" / "items.json").read_text())
+        assert data["total_count"] == 1
+        assert data["items"][0]["title"] == "T"
+
+    def test_skips_assets_when_no_envelope(self, tmp_path):
+        out_html = tmp_path / "out" / "new-materials.html"
+        write_output("<html></html>", str(out_html))
+        assert out_html.exists()
+        assert not (out_html.parent / "assets").exists()

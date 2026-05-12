@@ -157,14 +157,44 @@ folio-new-books/
 ├── src/
 │   ├── config_loader.py  # INI config loading and validation
 │   ├── folio_client.py   # FOLIO API auth and queries
-│   ├── google_images.py  # Cover-image lookup
-│   └── html_generator.py # Item building + HTML rendering
+│   ├── google_images.py  # Google Books cover lookup
+│   ├── tmdb_client.py    # TMDB poster lookup
+│   ├── subjects.py       # Subject-group classification
+│   └── html_generator.py # Item building, HTML/JSON rendering
 ├── templates/
-│   └── new_materials.html.j2  # Jinja2 HTML template
-├── tests/
-│   ├── test_config_loader.py
-│   ├── test_folio_client.py
-│   ├── test_google_images.py
-│   └── test_html_generator.py
+│   └── new_materials.html.j2  # Page shell (Jinja2)
+├── static/               # Copied verbatim into <output>/assets/
+│   ├── styles.css        # All styling
+│   └── app.js            # Filter, sort, view-toggle, render
+├── tests/                # pytest suite
 └── output/               # Generated files (gitignored)
 ```
+
+## Output layout
+
+Each run produces a clean three-folder structure that can be served by any
+static web host (or opened directly via `file://`).
+
+```
+output/
+├── new-materials.html    # ~10KB shell — embedded JSON, no inline CSS/JS
+├── assets/
+│   ├── styles.css        # All styling
+│   └── app.js            # Reads the embedded JSON, renders the views
+└── data/
+    └── items.json        # Same data as a standalone file (for RSS, dashboards, etc.)
+```
+
+Notes:
+- **Embedded JSON.** The HTML carries the item list in a
+  `<script type="application/json" id="items-data">` block so the page works
+  on `file://` URLs without a CORS workaround.  `app.js` reads it once at load
+  and builds both the grid and table views from the same array.
+- **Parallel JSON file.** `data/items.json` contains the exact same envelope
+  (generated_at, date_range, institution, total_count, items[]) so that
+  programmatic consumers — RSS bridges, dashboards, the campus portal — can
+  fetch the data without parsing HTML.
+- **JavaScript disabled.** The page renders a `<noscript>` notice that links
+  to `data/items.json` so the data is still reachable.  If serving to public
+  terminals where JS may be locked down, point patrons at the JSON file or
+  the printable view (built-in print stylesheet renders a clean 3-col grid).
