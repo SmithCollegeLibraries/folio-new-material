@@ -289,6 +289,32 @@ class TestBuildItems:
         # QA → Mathematics; Computer Science (more granular than just "Science")
         assert items[0]["subject_group"] == "Mathematics; Computer Science"
 
+    def test_subject_fallback_when_call_number_is_online(self):
+        """Ebooks have call_number 'Online' — must fall through to subjects."""
+        cfg = _config(lcc_grouping=True)
+        instance = dict(SAMPLE_INSTANCE, subjects=[
+            "Women and socialism--Communist countries",
+            "Women's Studies",
+            "Electronic books",
+        ])
+        rtac = {instance["id"]: [{"call_number": "Online", "library": "UM"}]}
+        items = build_items(
+            [SAMPLE_ORDER_LINE], {instance["id"]: instance}, {}, cfg,
+            rtac_holdings=rtac,
+        )
+        # Should land in HQ via "women", not "Other"
+        assert items[0]["subject_group"] == "Family; Marriage; Sex"
+
+    def test_subject_fallback_when_call_number_empty(self):
+        """New arrivals not yet in EDS have empty call_number."""
+        cfg = _config(lcc_grouping=True)
+        instance = dict(SAMPLE_INSTANCE, subjects=["Astronomy", "Cosmology"])
+        items = build_items(
+            [SAMPLE_ORDER_LINE], {instance["id"]: instance}, {}, cfg,
+            rtac_holdings={},  # nothing from RTAC
+        )
+        assert items[0]["subject_group"] == "Astronomy"
+
     def test_manual_groups_fall_through_to_lcc_when_no_keyword_matches(self):
         """Regression: manual groups used to short-circuit to Other on a miss."""
         cfg = _config(

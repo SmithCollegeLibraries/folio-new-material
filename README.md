@@ -157,16 +157,34 @@ Humanities  = literature, philosophy, history, art, music
 Sciences    = biology, chemistry, geology, ecology, astronomy
 ```
 
-**LCC-based groups:**  set `lcc_grouping = true`.  Each item is classified
-against the LCC class map shipped at `static/lcc-classes.json` (also copied
-to `output/assets/lcc-classes.json` so it's auditable next to the page).
-Longest-prefix matching gives ~150 buckets rather than 20:
+**LCC-based groups:**  set `lcc_grouping = true`.  Items are classified
+via a three-stage pipeline, first non-empty result wins:
 
-- `PN51 .T7` → "Literature (General); Drama; Journalism" (PN match)
-- `PS3558 .E63` → "American Literature" (PS match)
-- `QA76.5` → "Mathematics; Computer Science" (QA match)
-- `P51 .X` → "Language and Literature" (no PX in map, falls back to P)
-- `641.5 SMI` → no match (Dewey doesn't start with a letter)
+1. **Call number** matched against `static/lcc-classes.json` using
+   longest-prefix lookup.  Requires LCC-shaped call numbers (`^[A-Z]{1,3}\d`),
+   so placeholders like "Online" or "[On order]" are correctly rejected.
+   - `PN51 .T7` → "Literature (General); Drama; Journalism" (PN match)
+   - `PS3558 .E63` → "American Literature"
+   - `QA76.5` → "Mathematics; Computer Science"
+   - `Online` → no match (placeholder)
+   - `641.5 SMI` → no match (Dewey)
+
+2. **Subject text** matched against `static/lcc-subjects.json` when the
+   call number doesn't classify.  Covers two common gaps:
+   - **Ebooks** — `call_number: "Online"`, but subjects are rich.
+   - **New arrivals** — call numbers haven't been assigned or synced to
+     EDS yet, but FOLIO subjects are present.
+
+   The matcher strips LCSH `--` and BISAC `/` subdivisions, tries the
+   exact main heading first, then phrases, then individual words.
+   Format markers (`Electronic books`, `Audiobooks`, etc.) are skipped
+   so they don't trigger spurious matches.
+
+3. **"Other"** if both stages miss.
+
+Both reference maps are copied to `output/assets/` (`lcc-classes.json` and
+`lcc-subjects.json`) — edit them to extend or correct entries without
+touching code.
 
 The two modes compose: when both are set, manual groups match first;
 items the keywords don't catch fall through to LCC instead of going

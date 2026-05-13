@@ -12,6 +12,7 @@ from jinja2 import Environment, FileSystemLoader
 from src.subjects import (
     classify_subject,
     lcc_class_from_call_number,
+    lcc_class_from_subjects,
     normalize_subjects,
     ungrouped_label,
 )
@@ -105,10 +106,13 @@ def build_items(
 
         call_number = _primary_call_number(holdings, line, instance)
 
-        # Subject grouping: manual keyword match wins; LCC-class lookup picks
-        # up the slack when manual misses (or when no manual groups exist).
-        # Items that fall through every check end up in "Other" when any
-        # grouping mode is active, or "" when none is.
+        # Subject grouping is a three-stage pipeline:
+        #   1. Manual keyword match against [subject_groups] keywords (curated)
+        #   2. LCC class from the call number itself (works for cataloged items)
+        #   3. LCC class derived from subject heading text (works for new
+        #      arrivals not yet in EDS, ebooks with "Online" call numbers, and
+        #      anything else where stage 2 misses)
+        # First non-empty result wins; everything else is "Other".
         subject_group = ""
         manual_match = (
             classify_subject(raw_subjects, configured_groups)
@@ -117,7 +121,11 @@ def build_items(
         if manual_match:
             subject_group = manual_match
         elif lcc_on:
-            subject_group = lcc_class_from_call_number(call_number) or ungrouped_label()
+            subject_group = (
+                lcc_class_from_call_number(call_number)
+                or lcc_class_from_subjects(raw_subjects)
+                or ungrouped_label()
+            )
         elif configured_groups:
             # Manual groups configured but neither matched nor LCC available
             subject_group = ungrouped_label()
@@ -326,8 +334,8 @@ def write_assets(output_html_path: str) -> None:
     out_dir = Path(output_html_path).parent
     assets_dir = out_dir / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
-    # Style, behaviour, and the LCC class map (auditable / editable data)
-    for filename in ("styles.css", "app.js", "lcc-classes.json"):
+    # Style, behaviour, and the LCC reference maps (auditable / editable data)
+    for filename in ("styles.css", "app.js", "lcc-classes.json", "lcc-subjects.json"):
         src = _STATIC_DIR / filename
         if not src.exists():
             logger.warning("Static asset missing: %s", src)

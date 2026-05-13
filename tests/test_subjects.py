@@ -5,6 +5,7 @@ from src.subjects import (
     parse_groups_config,
     ungrouped_label,
     lcc_class_from_call_number,
+    lcc_class_from_subjects,
     normalize_subjects,
     _flatten_subjects,
 )
@@ -142,6 +143,80 @@ class TestLccClass:
     def test_unknown_letter_returns_none(self):
         # X and Y are unassigned in LCC
         assert lcc_class_from_call_number("X999 .X") is None
+
+    def test_online_placeholder_rejected(self):
+        # "Online" is the ebook placeholder, not an LCC call number
+        assert lcc_class_from_call_number("Online") is None
+
+    def test_internet_placeholder_rejected(self):
+        assert lcc_class_from_call_number("Internet") is None
+
+    def test_letters_without_digits_rejected(self):
+        # Even valid letters need a following digit to count as LCC
+        assert lcc_class_from_call_number("ELECTRONIC BOOK") is None
+
+    def test_on_order_placeholder_rejected(self):
+        assert lcc_class_from_call_number("[On order]") is None
+
+
+# ── lcc_class_from_subjects ──────────────────────────────────────────
+
+
+class TestLccClassFromSubjects:
+    def test_user_ebook_classifies_via_subjects(self):
+        """The exact example reported by the user."""
+        subjects = [
+            "Women and socialism--Communist countries",
+            "Women--Employment--Communist countries",
+            "Women's rights--Communist countries",
+            "Motherhood--Communist countries",
+            "SOCIAL SCIENCE--Women's Studies",
+            "POLITICAL SCIENCE--Political Ideologies--Communism & Socialism",
+            "Electronic books",
+        ]
+        # "women" → HQ → "Family; Marriage; Sex" (which covers Women's Studies)
+        assert lcc_class_from_subjects(subjects) == "Family; Marriage; Sex"
+
+    def test_bisac_main_heading_match(self):
+        # BISAC categories use " / " as a separator; the leading part wins
+        subjects = ["POLITICAL SCIENCE / Political Ideologies / Communism & Socialism"]
+        assert lcc_class_from_subjects(subjects) == "Political Science"
+
+    def test_lcsh_main_heading_match(self):
+        subjects = ["Computer programming -- Study and teaching"]
+        assert lcc_class_from_subjects(subjects) == "Mathematics; Computer Science"
+
+    def test_first_subject_wins(self):
+        subjects = [
+            "Astronomy -- Popular works",  # → QB → Astronomy
+            "Chemistry",                    # → QD → Chemistry
+        ]
+        assert lcc_class_from_subjects(subjects) == "Astronomy"
+
+    def test_format_markers_skipped(self):
+        # "Electronic books" alone is just a format tag; should return None
+        # not "Library Science" (Z, from "books")
+        subjects = ["Electronic books"]
+        assert lcc_class_from_subjects(subjects) is None
+
+    def test_format_marker_in_list_is_passed_over(self):
+        subjects = ["Electronic books", "Biology -- Textbooks"]
+        # Should skip "Electronic books" and match "Biology" instead
+        assert lcc_class_from_subjects(subjects) == "Natural History; Biology"
+
+    def test_empty_subjects_returns_none(self):
+        assert lcc_class_from_subjects([]) is None
+        assert lcc_class_from_subjects(None) is None
+
+    def test_dict_shaped_subject(self):
+        # mod-search sometimes returns [{"value": "..."}]
+        subjects = [{"value": "Astronomy"}]
+        assert lcc_class_from_subjects(subjects) == "Astronomy"
+
+    def test_no_matching_keyword_returns_none(self):
+        # Subjects with no recognizable LCC-mappable keywords
+        subjects = ["Foobar", "Nonsense topic", "Whatchamacallit"]
+        assert lcc_class_from_subjects(subjects) is None
 
 
 # ── normalize_subjects ───────────────────────────────────────────────

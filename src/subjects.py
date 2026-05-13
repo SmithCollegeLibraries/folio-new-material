@@ -87,10 +87,22 @@ def ungrouped_label() -> str:
 # ─────────────────────────────────────────────────────────────────────
 
 _LCC_JSON_PATH = Path(__file__).parent.parent / "static" / "lcc-classes.json"
+_LCC_SUBJECTS_PATH = Path(__file__).parent.parent / "static" / "lcc-subjects.json"
 _LCC_MAP_CACHE: Optional[dict] = None
+_LCC_SUBJECTS_CACHE: Optional[dict] = None
 # Max alpha-prefix length to consider when matching (most LCC subclasses
 # are 1-3 letters; a few use 4 but they're rare and not in our map).
 _MAX_PREFIX_LEN = 3
+# Call number must look like an LCC shelfmark: 1-3 letters + a digit.
+# Rejects "Online", "Internet", "[On order]", etc.
+_LCC_PATTERN = re.compile(r"^([A-Z]{1,3})\s*\d")
+# Format-only "subjects" that shouldn't drive topical classification
+_FORMAT_MARKERS = {
+    "electronic books", "e-books", "ebooks",
+    "online resources", "online publications",
+    "audiobooks", "videodiscs", "dvd-roms", "cd-roms",
+    "digital books", "streaming video",
+}
 
 
 def load_lcc_map() -> dict:
@@ -117,45 +129,127 @@ def load_lcc_map() -> dict:
     return _LCC_MAP_CACHE
 
 
+def load_lcc_subjects_map() -> dict:
+    """
+    Load the subject-keyword → LCC prefix map (cached).
+    Comment / metadata keys starting with "_" are filtered out.
+    """
+    global _LCC_SUBJECTS_CACHE
+    if _LCC_SUBJECTS_CACHE is not None:
+        return _LCC_SUBJECTS_CACHE
+    try:
+        with _LCC_SUBJECTS_PATH.open(encoding="utf-8") as f:
+            raw = json.load(f)
+        _LCC_SUBJECTS_CACHE = {
+            k.lower(): v
+            for k, v in raw.items()
+            if not k.startswith("_") and isinstance(v, str)
+        }
+    except (OSError, ValueError) as exc:
+        logger.warning("Could not load LCC subject map from %s: %s", _LCC_SUBJECTS_PATH, exc)
+        _LCC_SUBJECTS_CACHE = {}
+    return _LCC_SUBJECTS_CACHE
+
+
 def _reset_lcc_cache_for_tests() -> None:
-    """Test helper — forces the next load_lcc_map() call to re-read from disk."""
-    global _LCC_MAP_CACHE
+    """Test helper — forces the next load_*_map() call to re-read from disk."""
+    global _LCC_MAP_CACHE, _LCC_SUBJECTS_CACHE
     _LCC_MAP_CACHE = None
+    _LCC_SUBJECTS_CACHE = None
+
+
+def _label_for_prefix(prefix: str) -> Optional[str]:
+    """Look up an LCC prefix in the class map, shrinking until we hit."""
+    lcc_map = load_lcc_map()
+    while prefix:
+        label = lcc_map.get(prefix)
+        if label:
+            return label
+        prefix = prefix[:-1]
+    return None
 
 
 def lcc_class_from_call_number(call_number: str) -> Optional[str]:
     """
     Map a call number to its LCC class label via longest-prefix lookup.
 
-    Tries the leading alpha prefix at decreasing lengths so that "PN51 .T7"
-    matches "PN" → "Literature (General); Drama; Journalism" before falling
-    back to "P" → "Language and Literature".
+    Requires the call number to LOOK like LCC: 1-3 letters followed by a
+    digit.  This rejects "Online" / "Internet" / "[On order]" placeholders
+    that happen to start with letters but carry no classification value.
 
-    Returns None when the call number is empty, non-LCC, or starts with a
-    digit (Dewey, SuDoc, local schemes).
+    Returns None when the call number is empty, non-LCC-shaped, or when
+    no class in the map matches the prefix (e.g. unassigned letters).
     """
     if not call_number:
         return None
     cn = call_number.strip().upper()
-    if not cn or not cn[0].isalpha():
+    match = _LCC_PATTERN.match(cn)
+    if not match:
+        return None
+    return _label_for_prefix(match.group(1))
+
+
+def lcc_class_from_subjects(subjects: list) -> Optional[str]:
+    """
+    Derive an LCC class label from subject heading text.
+
+    Used as a fallback when an item has no usable LCC call number (new
+    arrivals not yet in EDS, ebooks with "Online" as call number).
+
+    Strategy, per subject in order:
+      1. Skip format markers ("Electronic books", "Audiobooks", ...)
+      2. Strip LCSH "--" subdivisions and BISAC " / " subdivisions
+      3. Try exact match on the main heading
+      4. Try multi-word phrases within the main heading (longest first)
+      5. Try single words left-to-right
+
+    The first match wins across all subjects; the resolved prefix is
+    looked up in the LCC class map for the display label.
+    """
+    if not subjects:
         return None
 
-    # Extract the leading alpha run, capped at _MAX_PREFIX_LEN
-    prefix = ""
-    for ch in cn:
-        if not ch.isalpha():
-            break
-        prefix += ch
-        if len(prefix) >= _MAX_PREFIX_LEN:
-            break
+    subject_map = load_lcc_subjects_map()
+    if not subject_map:
+        return None
 
-    lcc_map = load_lcc_map()
-    # Longest-match: shrink the prefix one character at a time until we hit
-    while prefix:
-        match = lcc_map.get(prefix)
-        if match:
-            return match
-        prefix = prefix[:-1]
+    for entry in subjects:
+        if isinstance(entry, dict):
+            text = entry.get("value") or entry.get("subject") or ""
+        else:
+            text = str(entry)
+        text = text.strip().lower()
+        if not text or text in _FORMAT_MARKERS:
+            continue
+
+        # Strip LCSH "--" or BISAC " / " subdivisions to get the main heading
+        main = re.split(r"\s*--\s*|\s+/\s+", text, maxsplit=1)[0].strip()
+        if not main:
+            continue
+
+        # 1. Exact match
+        if main in subject_map:
+            label = _label_for_prefix(subject_map[main])
+            if label:
+                return label
+
+        # 2. Multi-word phrases, longest first (max 3 words)
+        words = re.findall(r"[a-z]+(?:'[a-z]+)?", main)
+        for n in range(min(len(words), 3), 1, -1):
+            for i in range(len(words) - n + 1):
+                phrase = " ".join(words[i : i + n])
+                if phrase in subject_map:
+                    label = _label_for_prefix(subject_map[phrase])
+                    if label:
+                        return label
+
+        # 3. Single words in order
+        for word in words:
+            if word in subject_map:
+                label = _label_for_prefix(subject_map[word])
+                if label:
+                    return label
+
     return None
 
 
