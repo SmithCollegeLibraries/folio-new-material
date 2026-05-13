@@ -8,12 +8,14 @@ import json
 
 from src.html_generator import (
     build_items,
+    build_fallback_holdings,
     generate_html,
     build_data_envelope,
     write_output,
     write_assets,
     write_json_data,
     _safe_json_for_html,
+    _classification_call_number,
     _eds_url,
     _primary_author,
     _publisher,
@@ -165,6 +167,31 @@ def test_material_uuid_prefers_queried_tag():
     assert _material_uuid_from_line(line) == "queried-uuid"
 
 
+class TestClassificationCallNumber:
+    def test_single_lcc_classification(self):
+        instance = {"classifications": [{"classificationNumber": "PR6113.U85 W43 2025"}]}
+        assert _classification_call_number(instance) == "PR6113.U85 W43 2025"
+
+    def test_prefers_lcc_when_dewey_is_first(self):
+        # Cataloger may list Dewey first; LCC-shaped value should still win
+        instance = {"classifications": [
+            {"classificationNumber": "823.91", "classificationTypeId": "dewey"},
+            {"classificationNumber": "PR6113.U85", "classificationTypeId": "lc"},
+        ]}
+        assert _classification_call_number(instance) == "PR6113.U85"
+
+    def test_falls_back_to_first_when_no_lcc(self):
+        instance = {"classifications": [
+            {"classificationNumber": "823.91"},
+            {"classificationNumber": "813.6"},
+        ]}
+        assert _classification_call_number(instance) == "823.91"
+
+    def test_returns_empty_string_when_no_classifications(self):
+        assert _classification_call_number({}) == ""
+        assert _classification_call_number({"classifications": []}) == ""
+
+
 # ── EDS URL ───────────────────────────────────────────────────────────
 
 
@@ -288,6 +315,71 @@ class TestBuildItems:
         )
         # QA → Mathematics; Computer Science (more granular than just "Science")
         assert items[0]["subject_group"] == "Mathematics; Computer Science"
+
+    def test_unsynced_record_uses_classification_call_number(self):
+        """User's Jenny Mustard example: RTAC empty CN, classifications populated."""
+        cfg = _config(lcc_grouping=True)
+        instance = dict(
+            SAMPLE_INSTANCE,
+            classifications=[
+                {"classificationNumber": "PR6113.U85 W43 2025", "classificationTypeId": "lc"},
+            ],
+            items=[{"effectiveCallNumberComponents": {}, "status": {"name": "In process"}}],
+        )
+        # RTAC returns the holding but call_number is empty (item not yet shelved)
+        rtac = {instance["id"]: [
+            {"call_number": "", "library": "UM Du Bois", "status": "In process"},
+        ]}
+        items = build_items(
+            [SAMPLE_ORDER_LINE], {instance["id"]: instance}, {}, cfg,
+            rtac_holdings=rtac,
+        )
+        item = items[0]
+        # Call number was filled in from instance.classifications
+        assert item["call_number"] == "PR6113.U85 W43 2025"
+        # The RTAC holding was supplemented (not replaced)
+        assert item["holdings"][0]["call_number"] == "PR6113.U85 W43 2025"
+        assert item["holdings"][0]["library"] == "UM Du Bois"
+        assert item["holdings"][0]["status"] == "In process"
+        # LCC grouping now classifies it via PR
+        assert item["subject_group"] == "English Literature"
+
+    def test_rtac_call_number_wins_over_classification(self):
+        """When RTAC has its own call_number, the merge doesn't overwrite it."""
+        cfg = _config(lcc_grouping=True)
+        instance = dict(
+            SAMPLE_INSTANCE,
+            classifications=[{"classificationNumber": "PR6113.X1 2025"}],
+        )
+        rtac = {instance["id"]: [{"call_number": "QA76.5 .S5 LIVE", "library": "Main"}]}
+        items = build_items(
+            [SAMPLE_ORDER_LINE], {instance["id"]: instance}, {}, cfg,
+            rtac_holdings=rtac,
+        )
+        # RTAC's call number is unchanged
+        assert items[0]["holdings"][0]["call_number"] == "QA76.5 .S5 LIVE"
+        # Primary call_number reflects what's in holdings, which is the RTAC value
+        assert items[0]["call_number"] == "QA76.5 .S5 LIVE"
+
+    def test_fallback_holdings_use_classification_when_item_cn_empty(self):
+        """No RTAC at all + items[] with no call number → use classification."""
+        cfg = _config(lcc_grouping=True)
+        instance = dict(
+            SAMPLE_INSTANCE,
+            classifications=[{"classificationNumber": "PN51 .T7 2022"}],
+            items=[{
+                "effectiveCallNumberComponents": {},  # empty
+                "status": {"name": "In process"},
+                "effectiveLocationId": "loc-uuid",
+            }],
+        )
+        items = build_items(
+            [SAMPLE_ORDER_LINE], {instance["id"]: instance}, {}, cfg,
+            rtac_holdings={},  # no RTAC at all
+            locations_map={"loc-uuid": "Stacks"},
+        )
+        assert items[0]["holdings"][0]["call_number"] == "PN51 .T7 2022"
+        assert items[0]["subject_group"] == "Literature (General); Drama; Journalism"
 
     def test_subject_fallback_when_call_number_is_online(self):
         """Ebooks have call_number 'Online' — must fall through to subjects."""

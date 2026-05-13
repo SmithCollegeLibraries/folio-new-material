@@ -31,6 +31,10 @@ _ISBN_TYPE_NAMES = {"isbn", "isbn-10", "isbn-13"}
 # physical.materialType in the response payload.
 _QUERIED_TYPE_KEY = "_queried_material_uuid"
 
+# Used to pick LCC-shaped values when an instance has multiple classifications
+# (Dewey + LCC + local).  Mirrors src.subjects._LCC_PATTERN.
+_LCC_LOOKS_LIKE = re.compile(r"^[A-Z]{1,3}\s*\d")
+
 # Curated palette for placeholder covers — picked for legibility on white text
 # and reasonable colour-blind separation.  Items get a stable colour derived
 # from their material-type UUID so the same format always looks the same.
@@ -90,11 +94,25 @@ def build_items(
 
         instance = instances.get(instance_id, {})
 
-        # Prefer live RTAC data; fall back to mod-search items[] when RTAC is
-        # unavailable.  Empty list is fine and gets handled gracefully downstream.
-        holdings = rtac_holdings.get(instance_id)
-        if not holdings:
+        # The cataloged classification call number (MARC 050) is the single
+        # most reliable source — set the moment the record is created in
+        # FOLIO, before items are shelved or EDS syncs the bib.
+        classification_cn = _classification_call_number(instance)
+
+        # Holdings priority: live RTAC data first, fallback from mod-search
+        # items[] when RTAC has nothing for this instance.
+        holdings = rtac_holdings.get(instance_id) or []
+        if holdings:
+            # RTAC holdings may have empty call_number on items still "In process"
+            # — supplement with the cataloged classification so the display is
+            # populated immediately, not the day after the EDS sync runs.
+            if classification_cn:
+                for h in holdings:
+                    if not h.get("call_number"):
+                        h["call_number"] = classification_cn
+        else:
             holdings = build_fallback_holdings(instance, locations_map)
+
         raw_subjects = instance.get("subjects") or []
 
         type_uuid = _material_uuid_from_line(line)
@@ -166,17 +184,24 @@ def build_fallback_holdings(
     instance.items[] for call numbers and statuses, joins each item's
     effectiveLocationId against ``locations_map`` for the display name.
 
+    Falls back to the cataloged classification number (MARC 050 from
+    instance.classifications) when an item has no effectiveCallNumber yet
+    — that's normal for "In process" items that have been received but
+    not shelved.
+
     Returns a list of holding dicts matching the shape used by
     edge_client.normalize_holdings, so downstream rendering is identical
     regardless of source.
     """
+    classification_cn = _classification_call_number(instance)
     out: list[dict] = []
     for item in instance.get("items") or []:
         cn_components = item.get("effectiveCallNumberComponents") or {}
         status = (item.get("status") or {}).get("name", "")
         loc_id = item.get("effectiveLocationId", "")
+        call_number = cn_components.get("callNumber") or classification_cn
         out.append({
-            "call_number":   cn_components.get("callNumber", ""),
+            "call_number":   call_number,
             "location":      locations_map.get(loc_id, ""),
             "location_code": "",
             "library":       "",
@@ -188,6 +213,29 @@ def build_fallback_holdings(
             "material_type": "",
         })
     return out
+
+
+def _classification_call_number(instance: dict) -> str:
+    """
+    Return the most useful classification call number from instance.classifications.
+
+    When a record has multiple classifications (typically Dewey + LCC + a
+    local scheme), prefer the LCC-shaped value since that's what drives
+    both the display and the LCC subject grouping.  Falls back to the
+    first available classification when none look like LCC (Dewey-only
+    catalogs, for instance).
+    """
+    numbers = [
+        (c.get("classificationNumber") or "").strip()
+        for c in (instance.get("classifications") or [])
+    ]
+    numbers = [n for n in numbers if n]
+    if not numbers:
+        return ""
+    for n in numbers:
+        if _LCC_LOOKS_LIKE.match(n.upper()):
+            return n
+    return numbers[0]
 
 
 def generate_html(
@@ -434,15 +482,22 @@ def _primary_call_number(holdings: list, line: dict, instance: dict) -> str:
     Best-effort primary call number for the card.
 
     Source priority (most authoritative first):
-      1. The first RTAC holding's call_number (live data, definitive)
-      2. The order line's physical.location.callNumber
-      3. The instance's first holdings record's callNumber
-      4. Empty string when nothing is available
+      1. The first holding's call_number (RTAC or fallback — already merged
+         with the cataloged classification by build_items)
+      2. instance.classifications[] direct (safety net in case the merge
+         step was bypassed)
+      3. The order line's physical.location.callNumber
+      4. The instance's first holdings record's callNumber (legacy)
+      5. Empty string when nothing is available
     """
     for h in holdings or []:
         cn = h.get("call_number")
         if cn:
             return cn
+
+    cn = _classification_call_number(instance)
+    if cn:
+        return cn
 
     physical = line.get("physical") or {}
     loc = physical.get("location") or {}
