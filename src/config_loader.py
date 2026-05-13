@@ -116,6 +116,24 @@ class Config:
     def eds_enabled(self) -> bool:
         return bool(self.eds_db_id and self.eds_catalog_db and self.eds_an_prefix)
 
+    @property
+    def eds_link_strategy(self) -> str:
+        """
+        How to build EDS deep links: ``openurl`` (default) or ``search``.
+
+        ``openurl`` — OpenURL with the FOLIO access number as the primary id,
+        plus rft.isbn / rft.oclc as supplementary identifiers.  EDS resolves
+        the AN first (works for indexed records), then falls back to ISBN
+        or OCLC lookup.  Single click to the catalog record when it works.
+
+        ``search`` — Direct EDS Discovery search URL (research.ebsco.com)
+        keyed on ISBN, OCLC, or title.  Always lands on a results page so
+        the patron is never staring at a broken link, at the cost of an
+        extra click to pick the right record.
+        """
+        raw = self._get("eds", "link_strategy", "openurl").lower()
+        return raw if raw in ("openurl", "search") else "openurl"
+
     # ------------------------------------------------------------------
     # Google
     # ------------------------------------------------------------------

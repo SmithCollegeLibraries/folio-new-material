@@ -32,6 +32,20 @@ catalog_db = cat09206a
 an_prefix = scf.oai.edge.example.folio.ebsco.com.fs00001006
 # How to format the UUID in the EDS id parameter: dots | dashes
 an_separator = dots
+# Strategy for building EDS deep links:
+#   openurl  (default) — OpenURL with the FOLIO access number as the
+#                        primary id and rft.isbn / rft.oclc as supplementary
+#                        identifiers.  EDS tries each in order, so new
+#                        records that aren't AN-indexed yet still resolve
+#                        via ISBN or OCLC.  Single click to the catalog
+#                        record when resolution succeeds.
+#   search             — Direct EDS Discovery search URL keyed on ISBN,
+#                        OCLC, or title.  Always lands on a results page
+#                        (never a 404), at the cost of an extra click for
+#                        the patron to pick the right record.  Useful when
+#                        the openurl resolver is unreliable for your
+#                        institution's record types.
+link_strategy = openurl
 
 [google]
 # Cover images are fetched via the free Google Books viewapi (no API key required).

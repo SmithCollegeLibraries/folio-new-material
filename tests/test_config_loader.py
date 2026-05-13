@@ -238,6 +238,20 @@ class TestFullConfig:
         assert cfg.eds_an_separator == "dots"
         assert cfg.eds_enabled is True
 
+    def test_eds_link_strategy_default(self, tmp_path):
+        cfg = Config(_write_config(tmp_path, MINIMAL_CONFIG))
+        assert cfg.eds_link_strategy == "openurl"
+
+    def test_eds_link_strategy_search(self, tmp_path):
+        content = MINIMAL_CONFIG + "\n[eds]\nlink_strategy = search\n"
+        cfg = Config(_write_config(tmp_path, content))
+        assert cfg.eds_link_strategy == "search"
+
+    def test_eds_link_strategy_invalid_falls_back(self, tmp_path):
+        content = MINIMAL_CONFIG + "\n[eds]\nlink_strategy = bogus\n"
+        cfg = Config(_write_config(tmp_path, content))
+        assert cfg.eds_link_strategy == "openurl"
+
     def test_google_enabled_true(self, tmp_path):
         cfg = Config(_write_config(tmp_path, FULL_CONFIG))
         assert cfg.google_enabled is True

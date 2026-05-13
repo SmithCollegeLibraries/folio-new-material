@@ -94,6 +94,20 @@ Used to build EDS OpenURL deep links. Leave blank to disable links.
 | `catalog_db` | e.g. `cat09206a` |
 | `an_prefix` | e.g. `scf.oai.edge.fivecolleges.folio.ebsco.com.fs00001006` |
 | `an_separator` | `dots` (default) or `dashes` — how the UUID is formatted |
+| `link_strategy` | `openurl` (default) or `search` — see below |
+
+**Link strategies:**
+
+- `openurl` — Builds an OpenURL with the FOLIO access number as the
+  primary `id` parameter PLUS `rft.isbn` / `rft.oclc` as supplementary
+  identifiers.  EDS resolves the AN first; when it can't (new records not
+  yet synced from FOLIO), the rft fields let it fall back to ISBN or
+  OCLC lookup.  Best when most of your records have either identifier.
+
+- `search` — Builds a direct EDS Discovery search URL (research.ebsco.com)
+  keyed on ISBN, OCLC, or title.  Always lands on a results page, never
+  a broken link, but the patron has to click through to the record.
+  Useful when AN-based resolution is unreliable.
 
 #### `[google]`
 Cover image lookups via the free Google Books viewapi.  No API key required.

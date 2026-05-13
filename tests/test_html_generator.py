@@ -38,6 +38,7 @@ def _config(
     eds_catalog_db="cat09206a",
     eds_an_prefix="scf.oai.edge.example.com.tenant01",
     eds_an_separator="dots",
+    eds_link_strategy="openurl",
     output_title="New Materials",
     institution_name="Test Library",
     institution_logo_url="",
@@ -54,6 +55,7 @@ def _config(
     cfg.eds_catalog_db = eds_catalog_db
     cfg.eds_an_prefix = eds_an_prefix
     cfg.eds_an_separator = eds_an_separator
+    cfg.eds_link_strategy = eds_link_strategy
     cfg.output_title = output_title
     cfg.institution_name = institution_name
     cfg.institution_logo_url = institution_logo_url
@@ -198,7 +200,10 @@ class TestClassificationCallNumber:
 class TestEdsUrl:
     def test_builds_correct_url_with_dots(self):
         cfg = _config(eds_an_separator="dots")
-        url = _eds_url("eb83a0c0-c9f8-4b09-8362-2bbcc06f0a16", cfg)
+        url = _eds_url(
+            "eb83a0c0-c9f8-4b09-8362-2bbcc06f0a16",
+            isbn=None, oclc=None, title="", config=cfg,
+        )
         assert "openurl.ebsco.com/c/4e4lys/openurl" in url
         assert "eb83a0c0.c9f8.4b09.8362.2bbcc06f0a16" in url
         assert "ebsco:plink" in url
@@ -206,12 +211,80 @@ class TestEdsUrl:
 
     def test_builds_correct_url_with_dashes(self):
         cfg = _config(eds_an_separator="dashes")
-        url = _eds_url("eb83a0c0-c9f8-4b09-8362-2bbcc06f0a16", cfg)
+        url = _eds_url(
+            "eb83a0c0-c9f8-4b09-8362-2bbcc06f0a16",
+            isbn=None, oclc=None, title="", config=cfg,
+        )
         assert "eb83a0c0-c9f8-4b09-8362-2bbcc06f0a16" in url
 
     def test_returns_none_when_eds_disabled(self):
         cfg = _config(eds_enabled=False)
-        assert _eds_url("some-uuid", cfg) is None
+        url = _eds_url("some-uuid", isbn=None, oclc=None, title="", config=cfg)
+        assert url is None
+
+    def test_openurl_includes_rft_isbn_when_available(self):
+        cfg = _config()
+        url = _eds_url(
+            "eb83a0c0-c9f8-4b09-8362-2bbcc06f0a16",
+            isbn="1639369813", oclc=None, title="", config=cfg,
+        )
+        # Both the AN id and the rft.isbn fallback identifier are in the URL
+        assert "id=ebsco:cat09206a:" in url
+        assert "rft.isbn=1639369813" in url
+
+    def test_openurl_includes_rft_oclc_when_available(self):
+        cfg = _config()
+        url = _eds_url(
+            "eb83a0c0-c9f8-4b09-8362-2bbcc06f0a16",
+            isbn=None, oclc="1492480245", title="", config=cfg,
+        )
+        assert "rft.oclc=1492480245" in url
+
+    def test_openurl_combines_all_identifiers(self):
+        cfg = _config()
+        url = _eds_url(
+            "eb83a0c0-c9f8-4b09-8362-2bbcc06f0a16",
+            isbn="1639369813", oclc="1492480245",
+            title="A novel", config=cfg,
+        )
+        # EDS resolves in order: AN id → rft.isbn → rft.oclc — give it all
+        assert "id=ebsco:cat09206a:" in url
+        assert "rft.isbn=1639369813" in url
+        assert "rft.oclc=1492480245" in url
+
+    def test_search_strategy_uses_research_ebsco(self):
+        cfg = _config(eds_link_strategy="search")
+        url = _eds_url(
+            "any-uuid",
+            isbn="1639369813", oclc=None, title="A novel", config=cfg,
+        )
+        # Search URL lands on the EDS Discovery results page
+        assert "research.ebsco.com" in url
+        assert "q=ISBN%3A1639369813" in url
+
+    def test_search_strategy_prefers_isbn_over_oclc(self):
+        cfg = _config(eds_link_strategy="search")
+        url = _eds_url(
+            "any-uuid",
+            isbn="9781234567890", oclc="555", title="X", config=cfg,
+        )
+        assert "9781234567890" in url
+        assert "555" not in url
+
+    def test_search_strategy_falls_back_to_title(self):
+        cfg = _config(eds_link_strategy="search")
+        url = _eds_url(
+            "any-uuid",
+            isbn=None, oclc=None,
+            title="What a time to be alive", config=cfg,
+        )
+        assert "TI" in url
+        assert "What" in url or "What%20a" in url or "What+a" in url
+
+    def test_search_strategy_returns_none_with_no_identifiers(self):
+        cfg = _config(eds_link_strategy="search")
+        url = _eds_url("any-uuid", isbn=None, oclc=None, title="", config=cfg)
+        assert url is None
 
 
 # ── build_items ───────────────────────────────────────────────────────

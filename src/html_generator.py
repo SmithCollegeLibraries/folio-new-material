@@ -164,7 +164,13 @@ def build_items(
             "holdings": holdings,
             "cover_url": None,  # populated later by generate.py if images enabled
             "placeholder_color": _placeholder_color(type_uuid or type_label),
-            "eds_url": _eds_url(instance_id, config),
+            "eds_url": _eds_url(
+                instance_id,
+                _isbn(instance),
+                _oclc(instance),
+                instance.get("title") or line.get("titleOrPackage", ""),
+                config,
+            ),
             "isbn": _isbn(instance),
             "oclc": _oclc(instance),
         }
@@ -579,17 +585,95 @@ def _infer_type_label(instance: dict) -> str:
     return "Other"
 
 
-def _eds_url(instance_id: str, config) -> Optional[str]:
-    """Build an EDS OpenURL deep link for a FOLIO instance UUID."""
+def _eds_url(
+    instance_id: str,
+    isbn: Optional[str],
+    oclc: Optional[str],
+    title: str,
+    config,
+) -> Optional[str]:
+    """
+    Build an EDS deep link for an item.
+
+    Honours config.eds_link_strategy:
+      - ``openurl`` (default) — enriched OpenURL with the FOLIO access
+        number as the id parameter plus rft.isbn / rft.oclc as
+        supplementary identifiers.  EDS tries them in order, so new
+        records that aren't AN-indexed yet still resolve via ISBN/OCLC.
+      - ``search`` — direct EDS Discovery search URL using whichever
+        identifier is available, in priority order isbn > oclc > title.
+        Always lands on a results page; never 404s.
+    """
     if not config.eds_enabled:
         return None
 
-    sep = "-" if config.eds_an_separator == "dashes" else "."
-    formatted_id = instance_id.replace("-", sep)
-    an_value = f"{config.eds_an_prefix}.{formatted_id}"
-    id_param = f"ebsco:{config.eds_catalog_db}:{an_value}"
+    strategy = getattr(config, "eds_link_strategy", "openurl")
+    if strategy == "search":
+        return _eds_search_url(isbn, oclc, title, config)
+    return _eds_openurl(instance_id, isbn, oclc, config)
 
-    return (
-        f"https://openurl.ebsco.com/c/{config.eds_db_id}/openurl"
-        f"?sid=ebsco:plink&id={id_param}&crl=f&prompt=none"
-    )
+
+def _eds_openurl(
+    instance_id: str,
+    isbn: Optional[str],
+    oclc: Optional[str],
+    config,
+) -> Optional[str]:
+    """
+    Enriched OpenURL with AN + rft.isbn + rft.oclc.
+
+    EDS's openurl resolver tries the namespaced ``id`` first, then falls
+    back to rft.* identifiers.  Combining all three in one URL gives the
+    best chance of landing on the correct record even when the AN hasn't
+    yet been indexed (typical for items received but not synced to EDS).
+    """
+    from urllib.parse import quote
+
+    parts: list[str] = ["sid=ebsco:plink"]
+
+    if instance_id and config.eds_an_prefix and config.eds_catalog_db:
+        sep = "-" if config.eds_an_separator == "dashes" else "."
+        formatted_id = instance_id.replace("-", sep)
+        an_value = f"{config.eds_an_prefix}.{formatted_id}"
+        parts.append(f"id=ebsco:{config.eds_catalog_db}:{an_value}")
+
+    if isbn:
+        parts.append(f"rft.isbn={quote(isbn, safe='')}")
+    if oclc:
+        parts.append(f"rft.oclc={quote(str(oclc), safe='')}")
+
+    parts.append("crl=f")
+    parts.append("prompt=none")
+
+    return f"https://openurl.ebsco.com/c/{config.eds_db_id}/openurl?" + "&".join(parts)
+
+
+def _eds_search_url(
+    isbn: Optional[str],
+    oclc: Optional[str],
+    title: str,
+    config,
+) -> Optional[str]:
+    """
+    Direct EDS Discovery search URL.
+
+    Useful when AN-based openurls are unreliable (sync lag, unsupported
+    record types).  Lands on a results page where the patron picks the
+    right record, but never produces a broken link.
+    """
+    from urllib.parse import urlencode
+
+    if isbn:
+        query = f"ISBN:{isbn}"
+    elif oclc:
+        query = f"OCLC:{oclc}"
+    elif title:
+        # Quote the title for a phrase search; cap length to avoid URL bloat
+        query = f'TI:"{title[:120]}"'
+    else:
+        return None
+
+    params = {"q": query}
+    if config.eds_catalog_db:
+        params["db"] = config.eds_catalog_db
+    return f"https://research.ebsco.com/c/{config.eds_db_id}/search?{urlencode(params)}"
