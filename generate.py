@@ -46,13 +46,71 @@ from src.html_generator import (
 )
 
 
-def _setup_logging(verbose: bool) -> None:
-    level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        format="%(asctime)s  %(levelname)-8s  %(message)s",
+def _setup_logging(verbose: bool, log_file: Optional[str]) -> None:
+    """
+    Configure root logger with console + optional rotating file handler.
+
+    Console gets the configured level (INFO or DEBUG); the file always
+    captures DEBUG so post-mortem cron debugging has the full story.
+    Rotation: 10 MB × 5 backups, so the file can't grow unbounded.
+    """
+    console_level = logging.DEBUG if verbose else logging.INFO
+
+    formatter = logging.Formatter(
+        "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
-        level=level,
     )
+
+    handlers: list[logging.Handler] = []
+
+    console = logging.StreamHandler()
+    console.setFormatter(formatter)
+    console.setLevel(console_level)
+    handlers.append(console)
+
+    if log_file:
+        try:
+            from logging.handlers import RotatingFileHandler
+            log_path = Path(log_file).expanduser()
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            file_h = RotatingFileHandler(
+                log_path,
+                maxBytes=10 * 1024 * 1024,
+                backupCount=5,
+                encoding="utf-8",
+            )
+            file_h.setFormatter(formatter)
+            file_h.setLevel(logging.DEBUG)
+            handlers.append(file_h)
+        except OSError as exc:
+            # Don't abort the run; just warn that we can't write the log file
+            print(
+                f"Warning: could not open log file {log_file}: {exc}",
+                file=sys.stderr,
+            )
+
+    # Root logger must be at DEBUG so debug records reach the file handler
+    # even when the console is filtering to INFO
+    logging.basicConfig(level=logging.DEBUG, handlers=handlers, force=True)
+
+
+def _resolve_log_file(args: argparse.Namespace, config) -> Optional[str]:
+    """
+    Decide where (if anywhere) to write the log file.
+
+    Resolution order:
+      1. --log-file CLI argument (use 'no' / 'none' / 'false' to disable)
+      2. [output] log_file from config.ini (same disable values)
+      3. Default: logs/folio-new-books.log
+    """
+    if args.log_file is not None:
+        candidate = args.log_file
+    else:
+        candidate = getattr(config, "log_file", "logs/folio-new-books.log")
+
+    if not candidate or candidate.strip().lower() in ("no", "none", "false", ""):
+        return None
+    return candidate.strip()
 
 
 def _parse_args() -> argparse.Namespace:
@@ -94,9 +152,18 @@ def _parse_args() -> argparse.Namespace:
         help="Skip all cover-image lookups",
     )
     parser.add_argument(
+        "--log-file",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Path to log file (default: logs/folio-new-books.log). "
+            "Use 'no' or 'none' to disable file logging."
+        ),
+    )
+    parser.add_argument(
         "--verbose", "-v",
         action="store_true",
-        help="Enable debug logging",
+        help="Enable debug logging on the console (file always captures DEBUG)",
     )
     return parser.parse_args()
 
@@ -206,15 +273,26 @@ def _enrich_with_images(items: list[dict], config: Config, skip: bool) -> None:
 
 def main() -> int:
     args = _parse_args()
-    _setup_logging(args.verbose)
-    log = logging.getLogger(__name__)
 
-    # Load config
+    # Load config FIRST so log_file (which may be set there) is available
+    # before logging is initialised.  Config errors fall back to stderr.
     try:
         config = Config(args.config)
     except ConfigError as exc:
-        log.error("Configuration error: %s", exc)
+        print(f"Configuration error: {exc}", file=sys.stderr)
         return 1
+
+    # Now wire up logging — file logging happens to capture the rest of
+    # this run, but config errors above had to use plain stderr
+    _setup_logging(args.verbose, _resolve_log_file(args, config))
+    log = logging.getLogger(__name__)
+
+    # Run banner so successive cron runs have clear log boundaries
+    from datetime import datetime
+    log.info("─" * 70)
+    log.info("FOLIO New Materials — run starting %s",
+             datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    log.info("Config: %s", args.config)
 
     # Resolve date window
     start_date, end_date = _resolve_dates(args, config)

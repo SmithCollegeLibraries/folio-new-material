@@ -4,6 +4,7 @@ config.ini
 
 # Generated output
 output/
+logs/
 
 # Python
 __pycache__/

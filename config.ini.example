@@ -74,6 +74,9 @@ holdings_display = summary
 # Useful for staff who want to share a per-format list independently.
 # Uses [material_types] when set; otherwise discovers types from the data.
 pages_per_type = false
+# Path to a rotating log file for cron-job troubleshooting.  10 MB × 5
+# backups by default.  Set to "no" / "none" / empty to disable file logging.
+log_file = logs/folio-new-books.log
 
 [material_types]
 # Map material-type UUID to the label shown in the format dropdown.

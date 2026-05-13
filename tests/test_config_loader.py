@@ -153,6 +153,34 @@ class TestMinimalConfig:
         cfg = Config(_write_config(tmp_path, content))
         assert cfg.pages_per_type is True
 
+    def test_auto_group_back_compat_enables_lcc(self, tmp_path):
+        """Regression: legacy auto_group = true should map to lcc_grouping."""
+        content = MINIMAL_CONFIG + "\n[subject_groups]\nauto_group = true\n"
+        cfg = Config(_write_config(tmp_path, content))
+        assert cfg.lcc_grouping is True
+
+    def test_auto_group_filtered_from_manual_groups(self, tmp_path):
+        """Regression: auto_group must not become a fake manual group."""
+        content = MINIMAL_CONFIG + "\n[subject_groups]\nauto_group = true\n"
+        cfg = Config(_write_config(tmp_path, content))
+        # The bug: auto_group would parse as a manual group {"auto_group": ["true"]}
+        # and short-circuit everything to "Other"
+        assert cfg.subject_groups == {}
+
+    def test_log_file_default(self, tmp_path):
+        cfg = Config(_write_config(tmp_path, MINIMAL_CONFIG))
+        assert cfg.log_file == "logs/folio-new-books.log"
+
+    def test_log_file_can_be_disabled(self, tmp_path):
+        content = MINIMAL_CONFIG + "\n[output]\nlog_file = none\n"
+        cfg = Config(_write_config(tmp_path, content))
+        assert cfg.log_file == "none"
+
+    def test_log_file_custom_path(self, tmp_path):
+        content = MINIMAL_CONFIG + "\n[output]\nlog_file = /var/log/folio.log\n"
+        cfg = Config(_write_config(tmp_path, content))
+        assert cfg.log_file == "/var/log/folio.log"
+
     def test_edge_disabled_when_no_key(self, tmp_path):
         cfg = Config(_write_config(tmp_path, MINIMAL_CONFIG))
         assert cfg.edge_enabled is False

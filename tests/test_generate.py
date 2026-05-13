@@ -1,8 +1,9 @@
 """Tests for the entry-point helpers in generate.py."""
 
+import argparse
 from unittest.mock import MagicMock
 
-from generate import _slugify, _write_per_type_pages
+from generate import _slugify, _write_per_type_pages, _resolve_log_file
 
 
 # ── _slugify ─────────────────────────────────────────────────────────
@@ -108,3 +109,36 @@ class TestWritePerTypePages:
         )
         data = json.loads((out.parent / "data" / "items.json").read_text())
         assert data["total_count"] == 2
+
+
+# ── _resolve_log_file ────────────────────────────────────────────────
+
+
+def _ns(**kwargs):
+    return argparse.Namespace(**kwargs)
+
+
+class TestResolveLogFile:
+    def test_cli_wins_over_config(self):
+        cfg = MagicMock()
+        cfg.log_file = "logs/from-config.log"
+        path = _resolve_log_file(_ns(log_file="/var/log/custom.log"), cfg)
+        assert path == "/var/log/custom.log"
+
+    def test_falls_back_to_config_when_no_cli(self):
+        cfg = MagicMock()
+        cfg.log_file = "logs/from-config.log"
+        path = _resolve_log_file(_ns(log_file=None), cfg)
+        assert path == "logs/from-config.log"
+
+    def test_cli_none_disables_file_logging(self):
+        cfg = MagicMock()
+        cfg.log_file = "logs/from-config.log"
+        assert _resolve_log_file(_ns(log_file="none"), cfg) is None
+        assert _resolve_log_file(_ns(log_file="no"), cfg) is None
+        assert _resolve_log_file(_ns(log_file=""), cfg) is None
+
+    def test_config_none_disables_file_logging(self):
+        cfg = MagicMock()
+        cfg.log_file = "none"
+        assert _resolve_log_file(_ns(log_file=None), cfg) is None

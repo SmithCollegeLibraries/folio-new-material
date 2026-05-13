@@ -1,9 +1,16 @@
 """Configuration loading and validation for FOLIO New Materials."""
 
 import configparser
+import logging
 from pathlib import Path
 
 from src.subjects import parse_groups_config
+
+logger = logging.getLogger(__name__)
+
+# Keys inside [subject_groups] that are NOT actual group names but flags
+# controlling the grouping mode.  Filtered out before manual-group parsing.
+_RESERVED_GROUP_KEYS = {"lcc_grouping", "auto_group"}
 
 
 class ConfigError(Exception):
@@ -184,6 +191,17 @@ class Config:
         return raw if raw in ("none", "compact", "summary", "detailed") else "summary"
 
     @property
+    def log_file(self) -> str:
+        """
+        Path to the log file (relative paths resolve against the cwd of the
+        cron job).  Defaults to ``logs/folio-new-books.log``.
+
+        Set to an empty string or ``none`` / ``false`` to disable file
+        logging (console-only).
+        """
+        return self._get("output", "log_file", "logs/folio-new-books.log")
+
+    @property
     def pages_per_type(self) -> bool:
         """
         When true, generate one HTML page per material type instead of one
@@ -223,30 +241,45 @@ class Config:
         Returns a map of group name → list of keywords.
         Used to classify items by subject heading for grouped display.
 
-        The reserved key ``lcc_grouping`` is filtered out — it toggles the
-        call-number-based grouping mode (see ``lcc_grouping``) rather than
-        defining a real keyword group.
+        Reserved flag keys (``lcc_grouping``, ``auto_group``) are filtered
+        out so they cannot accidentally become a manual group with a single
+        keyword ``true`` — a subtle config-compatibility bug we hit when
+        renaming auto_group → lcc_grouping.
         """
         if not self._parser.has_section("subject_groups"):
             return {}
         raw = {
             k: v for k, v in self._parser.items("subject_groups")
-            if k.lower() != "lcc_grouping"
+            if k.lower() not in _RESERVED_GROUP_KEYS
         }
         return parse_groups_config(raw)
 
     @property
     def lcc_grouping(self) -> bool:
         """
-        When true and no manual subject_groups are defined, derive subject
-        groups from the Library of Congress top-level class encoded in each
-        item's call number (e.g. "QA76" → "Q" → "Science").
+        Enable Library-of-Congress-class subject grouping derived from call
+        numbers via longest-prefix lookup (see static/lcc-classes.json).
 
-        Reliable for LCC-using libraries; libraries on Dewey or other
-        schemes will see all items in "Other" and should prefer manual
-        groups instead.
+        Honours the legacy key ``auto_group = true`` as an alias so older
+        config files keep working; logs a deprecation notice on first read.
         """
         if not self._parser.has_section("subject_groups"):
             return False
-        raw = self._parser.get("subject_groups", "lcc_grouping", fallback="").strip().lower()
-        return raw in ("true", "1", "yes")
+
+        new_val = self._parser.get(
+            "subject_groups", "lcc_grouping", fallback=""
+        ).strip().lower()
+        if new_val in ("true", "1", "yes"):
+            return True
+
+        legacy_val = self._parser.get(
+            "subject_groups", "auto_group", fallback=""
+        ).strip().lower()
+        if legacy_val in ("true", "1", "yes"):
+            logger.warning(
+                "[subject_groups] auto_group is deprecated — "
+                "rename it to 'lcc_grouping' in your config.ini"
+            )
+            return True
+
+        return False

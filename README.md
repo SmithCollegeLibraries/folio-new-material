@@ -126,6 +126,7 @@ Tried only when Google Books returns no cover.  Get a free API key at
 | `default_view` | `grid` | Initial view (`grid` or `table`); per-user choice is then saved to localStorage |
 | `holdings_display` | `summary` | How to render multi-holding items: `none`, `compact`, `summary`, `detailed` |
 | `pages_per_type` | `false` | When `true`, write one HTML page per material type (e.g. `new-books.html`) instead of a single combined page |
+| `log_file` | `logs/folio-new-books.log` | Path for the rotating log file (10 MB × 5 backups). Set to `none` to disable file logging |
 
 #### `[material_types]`
 Maps FOLIO material-type UUIDs to display labels for the format dropdown.
@@ -240,7 +241,8 @@ python generate.py [options]
   --days N          Lookback days (overrides config)
   --output PATH     Output file (overrides config)
   --no-images       Skip cover-image lookup
-  --verbose         Debug logging
+  --log-file PATH   Override log file (use 'no'/'none' to disable file logging)
+  --verbose, -v     Debug logging on the console (file always captures DEBUG)
 ```
 
 ---
