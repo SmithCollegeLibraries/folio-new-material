@@ -35,17 +35,27 @@ class EdgeClient:
         Returns the raw JSON dict (with keys ``instanceId`` and ``holdings``),
         or None if the lookup fails.  Failures are logged but do not raise so
         that one bad instance does not abort the batch.
+
+        The Accept header is critical: without it the Edge RTAC endpoint
+        defaults to XML, which resp.json() cannot parse.
         """
         url = f"{self._base_url}/prod/rtac/folioRTAC"
         params = {"mms_id": instance_id, "apikey": self._api_key}
+        headers = {
+            "Accept":       "application/json",
+            "Content-Type": "application/json",
+        }
         try:
-            resp = requests.get(url, params=params, timeout=self._timeout)
+            resp = requests.get(url, params=params, headers=headers, timeout=self._timeout)
             resp.raise_for_status()
             return resp.json()
         except requests.RequestException as exc:
             logger.warning("RTAC lookup failed for %s: %s", instance_id, exc)
         except ValueError as exc:
-            logger.warning("RTAC returned non-JSON for %s: %s", instance_id, exc)
+            logger.warning(
+                "RTAC returned non-JSON for %s (Accept header may not be honored): %s",
+                instance_id, exc,
+            )
         return None
 
     def get_rtac_batch(

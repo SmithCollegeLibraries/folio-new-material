@@ -62,6 +62,15 @@ class TestGetRtac:
         assert "mms_id=instance-id" in sent
 
     @resp_lib.activate
+    def test_sends_accept_json_header(self):
+        # Without Accept: application/json, RTAC returns XML — would break resp.json()
+        resp_lib.add(resp_lib.GET, _RTAC_URL, json={"holdings": []}, status=200)
+        client = EdgeClient(_BASE, _API_KEY)
+        client.get_rtac("instance-id")
+        sent_headers = resp_lib.calls[0].request.headers
+        assert sent_headers.get("Accept") == "application/json"
+
+    @resp_lib.activate
     def test_returns_none_on_http_error(self):
         resp_lib.add(resp_lib.GET, _RTAC_URL, status=500)
         client = EdgeClient(_BASE, _API_KEY)
