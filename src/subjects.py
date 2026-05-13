@@ -68,6 +68,63 @@ def ungrouped_label() -> str:
     return _UNGROUPED_LABEL
 
 
+def auto_classify(subjects: list) -> Optional[str]:
+    """
+    Derive a subject-group label from an item's subjects automatically.
+
+    Strategy: take the first subject and strip any LC subdivision (anything
+    after " -- " or "--"), then return the main heading.  This gives broad
+    LC-style buckets like "History", "Computer programming", "Mathematics".
+
+    Returns:
+        Group label string, or None if there are no usable subjects.
+    """
+    if not subjects:
+        return None
+
+    for entry in subjects:
+        if isinstance(entry, str):
+            raw = entry
+        elif isinstance(entry, dict):
+            raw = entry.get("value") or entry.get("subject") or ""
+        else:
+            continue
+
+        if not raw or not raw.strip():
+            continue
+
+        # Strip LC subdivisions ("Heading -- Subdivision -- Form")
+        main = raw.split(" -- ", 1)[0]
+        main = main.split("--", 1)[0]
+        main = main.strip(" .,;:")  # tidy up trailing punctuation
+
+        if main:
+            return main
+
+    return None
+
+
+def normalize_subjects(subjects: list) -> list[str]:
+    """
+    Flatten a FOLIO subjects array into a plain list of strings.
+
+    Handles both shapes mod-search may return:
+      - ["Subject A", "Subject B"]
+      - [{"value": "Subject A"}, {"value": "Subject B"}]
+    """
+    out: list[str] = []
+    for entry in subjects or []:
+        if isinstance(entry, str):
+            text = entry.strip()
+        elif isinstance(entry, dict):
+            text = (entry.get("value") or entry.get("subject") or "").strip()
+        else:
+            continue
+        if text:
+            out.append(text)
+    return out
+
+
 def _flatten_subjects(subjects: list) -> str:
     """
     Concatenate all subject strings into a single lowercase blob for matching.

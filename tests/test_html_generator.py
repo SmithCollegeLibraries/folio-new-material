@@ -40,7 +40,9 @@ def _config(
     institution_name="Test Library",
     institution_logo_url="",
     subject_groups=None,
+    auto_group_subjects=False,
     default_view="grid",
+    holdings_display="summary",
 ):
     cfg = MagicMock()
     cfg.primary_color = primary_color
@@ -54,7 +56,9 @@ def _config(
     cfg.institution_name = institution_name
     cfg.institution_logo_url = institution_logo_url
     cfg.subject_groups = subject_groups or {}
+    cfg.auto_group_subjects = auto_group_subjects
     cfg.default_view = default_view
+    cfg.holdings_display = holdings_display
     return cfg
 
 
@@ -238,6 +242,69 @@ class TestBuildItems:
         items = build_items([SAMPLE_ORDER_LINE], {instance["id"]: instance}, {}, _config())
         assert items[0]["call_number"] == "QA76.5"
 
+    def test_rtac_holdings_override_instance_call_number(self):
+        instance = dict(SAMPLE_INSTANCE, holdings=[{"callNumber": "OLD-CN"}])
+        rtac = {instance["id"]: [
+            {"call_number": "RTAC-CN", "location": "Stacks", "library": "Main"},
+            {"call_number": "RTAC-CN-2", "location": "Annex", "library": "Branch"},
+        ]}
+        items = build_items(
+            [SAMPLE_ORDER_LINE],
+            {instance["id"]: instance},
+            {},
+            _config(),
+            rtac_holdings=rtac,
+        )
+        assert items[0]["call_number"] == "RTAC-CN"
+        assert len(items[0]["holdings"]) == 2
+
+    def test_subjects_included_in_item_dict(self):
+        instance = dict(SAMPLE_INSTANCE, subjects=["History", "Chemistry"])
+        items = build_items(
+            [SAMPLE_ORDER_LINE], {instance["id"]: instance}, {}, _config(),
+        )
+        assert items[0]["subjects"] == ["History", "Chemistry"]
+
+    def test_subjects_normalized_from_dict_shape(self):
+        instance = dict(SAMPLE_INSTANCE, subjects=[
+            {"value": "Engineering"}, {"value": "Mathematics"},
+        ])
+        items = build_items(
+            [SAMPLE_ORDER_LINE], {instance["id"]: instance}, {}, _config(),
+        )
+        assert items[0]["subjects"] == ["Engineering", "Mathematics"]
+
+    def test_auto_grouping_uses_primary_heading(self):
+        cfg = _config(auto_group_subjects=True)
+        instance = dict(SAMPLE_INSTANCE, subjects=["Civil engineering -- 21st century"])
+        items = build_items(
+            [SAMPLE_ORDER_LINE], {instance["id"]: instance}, {}, cfg,
+        )
+        assert items[0]["subject_group"] == "Civil engineering"
+
+    def test_auto_grouping_assigns_other_when_no_subjects(self):
+        cfg = _config(auto_group_subjects=True)
+        # SAMPLE_INSTANCE has no subjects field
+        items = build_items(
+            [SAMPLE_ORDER_LINE],
+            {SAMPLE_INSTANCE["id"]: SAMPLE_INSTANCE},
+            {},
+            cfg,
+        )
+        assert items[0]["subject_group"] == "Other"
+
+    def test_manual_groups_take_precedence_over_auto(self):
+        # When both configured, manual wins
+        cfg = _config(
+            subject_groups={"Sciences": ["chemistry"]},
+            auto_group_subjects=True,
+        )
+        instance = dict(SAMPLE_INSTANCE, subjects=["Chemistry -- General"])
+        items = build_items(
+            [SAMPLE_ORDER_LINE], {instance["id"]: instance}, {}, cfg,
+        )
+        assert items[0]["subject_group"] == "Sciences"
+
 
 # ── generate_html ─────────────────────────────────────────────────────
 
@@ -255,7 +322,9 @@ class TestGenerateHtml:
             "type_uuid": "2d72aa13-2451-41fe-afc7-b3dc7c131389",
             "type_label": "Books",
             "subject_group": "",
+            "subjects": [],
             "call_number": "",
+            "holdings": [],
             "cover_url": None,
             "placeholder_color": "#2a5e8c",
             "eds_url": "https://openurl.ebsco.com/c/abc/openurl?sid=ebsco:plink&id=x",

@@ -9,7 +9,12 @@ from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader
 
-from src.subjects import classify_subject, ungrouped_label
+from src.subjects import (
+    classify_subject,
+    auto_classify,
+    normalize_subjects,
+    ungrouped_label,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,19 +50,29 @@ def build_items(
     instances: dict[str, dict],
     material_types: dict[str, str],
     config,
+    rtac_holdings: Optional[dict[str, list[dict]]] = None,
 ) -> list[dict]:
     """
-    Merge order-line and instance data into a flat list of display items.
+    Merge order-line, mod-search instance, and (optional) edge-RTAC holdings
+    data into a flat list of display items.
 
     Args:
         order_lines:    Raw poLines records from the FOLIO orders API.
         instances:      Map of instance UUID → instance record from mod-search.
         material_types: UUID → label map from config (empty = all types).
         config:         Application config object.
+        rtac_holdings:  Optional map of instance UUID → list of normalized
+                        holding dicts (from edge_client.normalize_holdings).
+                        When present, supplies authoritative call numbers
+                        and locations for consortium / multi-branch sites.
 
     Returns:
-        List of item dicts ready for the HTML template.
+        List of item dicts ready for the JSON envelope and HTML template.
     """
+    rtac_holdings = rtac_holdings or {}
+    configured_groups = getattr(config, "subject_groups", {}) or {}
+    auto_group = getattr(config, "auto_group_subjects", False)
+
     items = []
     for line in order_lines:
         instance_id = line.get("instanceId") or line.get("instanceid")
@@ -66,6 +81,8 @@ def build_items(
             continue
 
         instance = instances.get(instance_id, {})
+        holdings = rtac_holdings.get(instance_id, [])
+        raw_subjects = instance.get("subjects") or []
 
         type_uuid = _material_uuid_from_line(line)
         type_label = (
@@ -73,15 +90,15 @@ def build_items(
             or _infer_type_label(instance)
             or "Other"
         )
-        configured_groups = getattr(config, "subject_groups", {}) or {}
-        subject_group = classify_subject(
-            instance.get("subjects") or [],
-            configured_groups,
-        )
-        # When subject-grouping is enabled but the item matches no group,
-        # tag it as "Other" so it can be filtered/displayed as such.
-        if not subject_group and configured_groups:
-            subject_group = ungrouped_label()
+
+        # Subject grouping: prefer manual classification when groups are
+        # configured; fall back to auto-classification when enabled; otherwise
+        # leave empty.
+        subject_group = ""
+        if configured_groups:
+            subject_group = classify_subject(raw_subjects, configured_groups) or ungrouped_label()
+        elif auto_group:
+            subject_group = auto_classify(raw_subjects) or ungrouped_label()
 
         item = {
             "id": line.get("id", instance_id),
@@ -93,8 +110,10 @@ def build_items(
             "receipt_date": _format_date(line.get("receiptDate", "")),
             "type_uuid": type_uuid,
             "type_label": type_label,
-            "subject_group": subject_group or "",
-            "call_number": _call_number(line, instance),
+            "subject_group": subject_group,
+            "subjects": normalize_subjects(raw_subjects),
+            "call_number": _primary_call_number(holdings, line, instance),
+            "holdings": holdings,
             "cover_url": None,  # populated later by generate.py if images enabled
             "placeholder_color": _placeholder_color(type_uuid or type_label),
             "eds_url": _eds_url(instance_id, config),
@@ -148,15 +167,32 @@ def generate_html(
         for uuid in active_types
     }
 
-    # Subject groups that actually appear in the item list, in config order.
-    # This keeps the dropdown predictable for staff (matches their config).
+    # Subject groups that actually appear in the item list.
+    # - With manual [subject_groups]: keep config order, then "Other".
+    # - With auto_group enabled: discover groups from the data, sort by
+    #   frequency (most populous first), then "Other" at the end.
     configured_groups = getattr(config, "subject_groups", None) or {}
+    auto_group_on = getattr(config, "auto_group_subjects", False)
     active_subject_groups: dict[str, int] = {}
+
     if configured_groups:
         for name in configured_groups:
             count = sum(1 for i in items if i.get("subject_group") == name)
             if count > 0:
                 active_subject_groups[name] = count
+        other_count = sum(1 for i in items if i.get("subject_group") == ungrouped_label())
+        if other_count > 0:
+            active_subject_groups[ungrouped_label()] = other_count
+
+    elif auto_group_on:
+        counts: dict[str, int] = {}
+        for item in items:
+            g = item.get("subject_group") or ""
+            if g and g != ungrouped_label():
+                counts[g] = counts.get(g, 0) + 1
+        # Frequency-sorted; alphabetical as a tiebreaker for stability
+        for name, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
+            active_subject_groups[name] = count
         other_count = sum(1 for i in items if i.get("subject_group") == ungrouped_label())
         if other_count > 0:
             active_subject_groups[ungrouped_label()] = other_count
@@ -188,9 +224,10 @@ def generate_html(
         active_types=active_types,
         counts=counts,
         subject_groups=active_subject_groups,
-        subject_grouping_enabled=bool(getattr(config, "subject_groups", None)),
+        subject_grouping_enabled=bool(active_subject_groups),
         ungrouped_label=ungrouped_label(),
         default_view=getattr(config, "default_view", "grid"),
+        holdings_display=getattr(config, "holdings_display", "summary"),
         total_count=len(items),
     )
 
@@ -320,20 +357,27 @@ def _material_uuid_from_line(line: dict) -> str:
     return physical.get("materialType") or physical.get("materialTypeId") or ""
 
 
-def _call_number(line: dict, instance: dict) -> str:
+def _primary_call_number(holdings: list, line: dict, instance: dict) -> str:
     """
-    Best-effort call number lookup for display.
+    Best-effort primary call number for the card.
 
-    Falls back through the most reliable sources first:
-      1. The order line's physical.location.callNumber
-      2. The instance's first holdings record's callNumber
-      3. Empty string when nothing is available
+    Source priority (most authoritative first):
+      1. The first RTAC holding's call_number (live data, definitive)
+      2. The order line's physical.location.callNumber
+      3. The instance's first holdings record's callNumber
+      4. Empty string when nothing is available
     """
+    for h in holdings or []:
+        cn = h.get("call_number")
+        if cn:
+            return cn
+
     physical = line.get("physical") or {}
     loc = physical.get("location") or {}
     cn = loc.get("callNumber")
     if cn:
         return cn
+
     for holding in instance.get("holdings") or []:
         cn = holding.get("callNumber")
         if cn:

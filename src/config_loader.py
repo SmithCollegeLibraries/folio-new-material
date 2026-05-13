@@ -75,6 +75,15 @@ class Config:
     def folio_edge_api(self) -> str:
         return self._get("folio", "edge_api").rstrip("/")
 
+    @property
+    def folio_edge_api_key(self) -> str:
+        return self._get("folio", "edge_api_key")
+
+    @property
+    def edge_enabled(self) -> bool:
+        """Edge RTAC is only used when both the URL and API key are set."""
+        return bool(self.folio_edge_api and self.folio_edge_api_key)
+
     # ------------------------------------------------------------------
     # EDS
     # ------------------------------------------------------------------
@@ -168,6 +177,12 @@ class Config:
         raw = self._get("output", "default_view", "grid").lower()
         return raw if raw in ("grid", "table") else "grid"
 
+    @property
+    def holdings_display(self) -> str:
+        """How richly to render multi-holding items: none | compact | summary | detailed."""
+        raw = self._get("output", "holdings_display", "summary").lower()
+        return raw if raw in ("none", "compact", "summary", "detailed") else "summary"
+
     # ------------------------------------------------------------------
     # Material types
     # ------------------------------------------------------------------
@@ -195,8 +210,27 @@ class Config:
         """
         Returns a map of group name → list of keywords.
         Used to classify items by subject heading for grouped display.
+
+        The reserved key ``auto_group`` is filtered out — it controls the
+        auto-derivation behaviour (see ``auto_group_subjects``) rather than
+        defining a real group.
         """
         if not self._parser.has_section("subject_groups"):
             return {}
-        raw = dict(self._parser.items("subject_groups"))
+        raw = {
+            k: v for k, v in self._parser.items("subject_groups")
+            if k.lower() != "auto_group"
+        }
         return parse_groups_config(raw)
+
+    @property
+    def auto_group_subjects(self) -> bool:
+        """
+        When true and no manual subject_groups are defined, derive grouping
+        labels from each item's primary subject heading (the part before
+        an LC " -- " subdivision).  Frequency-sorted in the dropdown.
+        """
+        if not self._parser.has_section("subject_groups"):
+            return False
+        raw = self._parser.get("subject_groups", "auto_group", fallback="").strip().lower()
+        return raw in ("true", "1", "yes")

@@ -125,6 +125,66 @@ class TestMinimalConfig:
             "Sciences": ["biology", "chemistry"],
         }
 
+    def test_auto_group_subjects_false_by_default(self, tmp_path):
+        cfg = Config(_write_config(tmp_path, MINIMAL_CONFIG))
+        assert cfg.auto_group_subjects is False
+
+    def test_auto_group_subjects_true_when_set(self, tmp_path):
+        content = MINIMAL_CONFIG + "\n[subject_groups]\nauto_group = true\n"
+        cfg = Config(_write_config(tmp_path, content))
+        assert cfg.auto_group_subjects is True
+
+    def test_auto_group_key_excluded_from_groups_dict(self, tmp_path):
+        content = MINIMAL_CONFIG + (
+            "\n[subject_groups]\n"
+            "auto_group = false\n"
+            "Engineering = computer\n"
+        )
+        cfg = Config(_write_config(tmp_path, content))
+        assert "auto_group" not in cfg.subject_groups
+        assert cfg.subject_groups == {"Engineering": ["computer"]}
+
+    def test_edge_disabled_when_no_key(self, tmp_path):
+        cfg = Config(_write_config(tmp_path, MINIMAL_CONFIG))
+        assert cfg.edge_enabled is False
+        assert cfg.folio_edge_api_key == ""
+
+    def test_edge_enabled_when_url_and_key_set(self, tmp_path):
+        content = MINIMAL_CONFIG + (
+            "\n[folio]\n"
+            "edge_api = https://edge.example.com\n"
+            "edge_api_key = secret-key\n"
+        )
+        # Re-using [folio] section in a tmp INI works because configparser merges
+        # — but for cleanliness rewrite minimal config inline:
+        content = (
+            "[folio]\n"
+            "base_url = https://api.example.com\n"
+            "username = u\n"
+            "password = p\n"
+            "edge_api = https://edge.example.com/\n"
+            "edge_api_key = secret-key\n"
+        )
+        cfg = Config(_write_config(tmp_path, content))
+        assert cfg.edge_enabled is True
+        assert cfg.folio_edge_api == "https://edge.example.com"
+        assert cfg.folio_edge_api_key == "secret-key"
+
+    def test_holdings_display_default(self, tmp_path):
+        cfg = Config(_write_config(tmp_path, MINIMAL_CONFIG))
+        assert cfg.holdings_display == "summary"
+
+    def test_holdings_display_accepts_valid_values(self, tmp_path):
+        for mode in ("none", "compact", "summary", "detailed"):
+            content = MINIMAL_CONFIG + f"\n[output]\nholdings_display = {mode}\n"
+            cfg = Config(_write_config(tmp_path, content))
+            assert cfg.holdings_display == mode
+
+    def test_holdings_display_invalid_falls_back_to_summary(self, tmp_path):
+        content = MINIMAL_CONFIG + "\n[output]\nholdings_display = bogus\n"
+        cfg = Config(_write_config(tmp_path, content))
+        assert cfg.holdings_display == "summary"
+
 
 class TestFullConfig:
     def test_folio_values(self, tmp_path):

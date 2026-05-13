@@ -311,6 +311,14 @@ button { font: inherit; }
   font-size: .95rem;
   font-weight: 600;
   line-height: 1.3;
+  /* Truncate long titles to 3 lines; full text stays in DOM for screen
+     readers and shows on hover via the title="..." attribute. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+  hyphens: auto;
 }
 .card-title a {
   text-decoration: none;
@@ -318,13 +326,53 @@ button { font: inherit; }
 }
 .card-title a:hover { text-decoration: underline; }
 .card-author,
-.card-publisher,
+.card-year,
 .card-callno {
   margin: 0;
   font-size: .82rem;
   color: var(--color-muted);
 }
-.card-callno { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.card-author {
+  /* Authors can also be long; cap at 2 lines */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-callno {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: .78rem;
+}
+.card-callno-more {
+  color: var(--color-primary);
+  font-family: var(--font);
+  font-weight: 600;
+  cursor: help;
+}
+
+/* Multi-holding lists (detailed mode) */
+.card-holdings {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: .78rem;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--color-muted);
+}
+.card-holdings li {
+  padding: .15rem 0;
+  border-top: 1px solid var(--color-border);
+}
+.card-holdings li:first-child { border-top: 0; }
+.table-holdings {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+.table-holdings li {
+  padding: .1rem 0;
+}
 
 .card-meta {
   margin-top: auto;
@@ -406,6 +454,12 @@ button { font: inherit; }
   font-weight: 600;
   color: var(--color-text);
   text-decoration: none;
+  display: inline-block;
+  max-width: 32em;       /* limit title column width */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
 }
 .materials-table .row-title:hover { text-decoration: underline; }
 .materials-table .col-meta {

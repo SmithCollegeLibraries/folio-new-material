@@ -82,7 +82,8 @@ Connection settings for your FOLIO instance.
 | `tenant` | `fs00001006` | `x-okapi-tenant` header value |
 | `username` | — | FOLIO username |
 | `password` | — | FOLIO password |
-| `edge_api` | — | Optional Edge API base URL |
+| `edge_api` | — | Optional Edge API base URL — enables RTAC holdings lookup |
+| `edge_api_key` | — | API key for the Edge endpoint (paired with `edge_api`) |
 
 #### `[eds]`
 Used to build EDS OpenURL deep links. Leave blank to disable links.
@@ -123,6 +124,7 @@ Tried only when Google Books returns no cover.  Get a free API key at
 | `primary_color` | `#003366` | Header/link colour |
 | `accent_color` | `#ffffff` | Text on primary background |
 | `default_view` | `grid` | Initial view (`grid` or `table`); per-user choice is then saved to localStorage |
+| `holdings_display` | `summary` | How to render multi-holding items: `none`, `compact`, `summary`, `detailed` |
 
 #### `[material_types]`
 Maps FOLIO material-type UUIDs to display labels for the format dropdown.
@@ -140,15 +142,11 @@ faa0cd0a-e408-4b57-acff-1c3f9171723d = DVD
 ```
 
 #### `[subject_groups]`
-Optional.  Groups items by high-level subject area using keyword-based
-classification against each instance's FOLIO subject headings.
+Optional.  Groups items by high-level subject area, with two modes:
 
-Each line is `Group Name = comma-separated keywords` (case-insensitive).
-An item is placed in the first group whose keyword appears in any of its
-subjects; unmatched items are listed as "Other".
-
-When this section has any entries, a second filter dropdown ("Subject area")
-appears in the toolbar.
+**Manual groups (curated):**  list group names and keywords.  An item is
+placed in the first group whose keyword appears in any of its FOLIO subject
+headings; unmatched items are "Other".
 
 ```ini
 [subject_groups]
@@ -156,6 +154,40 @@ Engineering = engineering, computer, programming, mathematics, physics
 Humanities  = literature, philosophy, history, art, music
 Sciences    = biology, chemistry, geology, ecology, astronomy
 ```
+
+**Auto-derived groups:**  set `auto_group = true` and leave the rest empty.
+The generator extracts each item's primary LC subject heading (the text
+before any " -- " subdivision) and uses that as the group label, sorted
+by frequency in the dropdown.  Good for small libraries that haven't built
+a curated subject taxonomy yet.
+
+```ini
+[subject_groups]
+auto_group = true
+```
+
+When either mode is active, a second filter dropdown ("Subject area")
+appears in the toolbar.
+
+#### Holdings and RTAC
+When `[folio] edge_api` and `edge_api_key` are both set, the generator
+calls the Edge RTAC endpoint (`/prod/rtac/folioRTAC`) once per instance to
+fetch live holdings data.  This supplies:
+
+- Authoritative call numbers
+- Library / location names (consortium-aware — handles multi-branch copies)
+- Status (Available, Checked out, etc.) and due date
+- Material type and barcode
+
+Each item's `holdings` array in `data/items.json` contains every copy.
+The card / table view shows them according to `holdings_display`:
+
+| Mode | Card display |
+|------|--------------|
+| `none` | Hide the holdings block |
+| `compact` | Just the count: "3 copies" |
+| `summary` (default) | First call number + library, with "+N more" hint and full list on hover |
+| `detailed` | Full list of all copies with call number / library / status |
 
 ---
 
@@ -225,10 +257,11 @@ folio-new-books/
 ├── requirements.txt
 ├── src/
 │   ├── config_loader.py  # INI config loading and validation
-│   ├── folio_client.py   # FOLIO API auth and queries
+│   ├── folio_client.py   # FOLIO Okapi API (auth, orders, instances)
+│   ├── edge_client.py    # FOLIO Edge RTAC holdings lookup
 │   ├── google_images.py  # Google Books cover lookup
 │   ├── tmdb_client.py    # TMDB poster lookup
-│   ├── subjects.py       # Subject-group classification
+│   ├── subjects.py       # Subject classification (manual + auto-grouped)
 │   └── html_generator.py # Item building, HTML/JSON rendering
 ├── templates/
 │   └── new_materials.html.j2  # Page shell (Jinja2)

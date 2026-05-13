@@ -25,6 +25,9 @@
   }
   var items = data.items || [];
 
+  // Display preferences come from data-* attributes on <html> (see template)
+  var holdingsMode = document.documentElement.getAttribute('data-holdings-display') || 'summary';
+
   // ── DOM helpers ─────────────────────────────────────────────────────
   function el(tag, attrs, children) {
     var node = document.createElement(tag);
@@ -64,11 +67,13 @@
 
   // ── Build a single grid card ────────────────────────────────────────
   function buildCard(item, index) {
+    var fullTitle = item.title || '';
+
     var coverChild = item.cover_url
       ? el('img', {
           class:   'card-cover',
           src:     item.cover_url,
-          alt:     'Cover of ' + item.title,
+          alt:     'Cover of ' + fullTitle,
           loading: 'lazy'
         })
       : el('div', {
@@ -77,34 +82,43 @@
           'aria-hidden': 'true'
         }, [
           el('span', { class: 'ph-type'  }, [item.type_label || 'Item']),
-          el('span', { class: 'ph-title' }, [item.title || ''])
+          el('span', { class: 'ph-title' }, [fullTitle])
         ]);
 
-    var titleNode = item.eds_url
-      ? el('a', { href: item.eds_url, target: '_blank', rel: 'noopener noreferrer' }, [item.title || ''])
-      : document.createTextNode(item.title || '');
+    // The title link carries title="..." so hovering shows the full
+    // (CSS-truncated) title via native browser tooltip.  Screen readers
+    // read the full title text inside the link.
+    var titleLink = item.eds_url
+      ? el('a', {
+          href:   item.eds_url,
+          title:  fullTitle,
+          target: '_blank',
+          rel:    'noopener noreferrer'
+        }, [fullTitle])
+      : el('span', { title: fullTitle }, [fullTitle]);
 
     var bodyChildren = [
-      el('h2', { class: 'card-title', id: 'grid-title-' + index }, [titleNode])
+      el('h2', { class: 'card-title', id: 'grid-title-' + index }, [titleLink])
     ];
     if (item.author) {
-      bodyChildren.push(el('p', { class: 'card-author' }, [item.author]));
+      bodyChildren.push(el('p', { class: 'card-author', title: item.author }, [item.author]));
     }
-    if (item.publisher || item.year) {
-      var pubText = (item.publisher || '') +
-                    (item.publisher && item.year ? ', ' : '') +
-                    (item.year || '');
-      bodyChildren.push(el('p', { class: 'card-publisher' }, [pubText]));
+    // (publisher intentionally omitted from display — still in items.json)
+    if (item.year) {
+      bodyChildren.push(el('p', { class: 'card-year' }, [item.year]));
     }
-    if (item.call_number) {
-      bodyChildren.push(el('p', { class: 'card-callno' }, [item.call_number]));
-    }
+
+    var holdingsNode = buildHoldingsBlock(item, false);
+    if (holdingsNode) bodyChildren.push(holdingsNode);
 
     var metaChildren = [
       el('span', { class: 'badge' }, [item.type_label || 'Other'])
     ];
     if (item.subject_group) {
-      metaChildren.push(el('span', { class: 'badge badge-subject' }, [item.subject_group]));
+      metaChildren.push(el('span', {
+        class: 'badge badge-subject',
+        title: item.subject_group
+      }, [item.subject_group]));
     }
     if (item.receipt_date) {
       metaChildren.push(el('span', { class: 'card-received', title: 'Received' }, [
@@ -124,8 +138,58 @@
     return el('li', attrs, [article]);
   }
 
+  // ── Holdings block (consortium / multi-branch aware) ─────────────────
+  function buildHoldingsBlock(item, isTable) {
+    var holdings = item.holdings || [];
+    if (holdingsMode === 'none' || holdings.length === 0) {
+      // Fall back to the legacy single call_number when no RTAC holdings
+      if (item.call_number) {
+        return el('p', { class: 'card-callno' }, [item.call_number]);
+      }
+      return null;
+    }
+
+    if (holdingsMode === 'compact') {
+      var label = holdings.length === 1 ? '1 copy' : holdings.length + ' copies';
+      return el('p', { class: 'card-callno' }, [label]);
+    }
+
+    if (holdingsMode === 'detailed') {
+      var list = el('ul', { class: 'card-holdings card-holdings-detail' });
+      holdings.forEach(function (h) {
+        list.appendChild(el('li', null, [formatHoldingLine(h)]));
+      });
+      return list;
+    }
+
+    // summary (default): show first holding with a "+N more" hint
+    var first = holdings[0];
+    var primary = el('p', { class: 'card-callno' }, [formatHoldingLine(first)]);
+    if (holdings.length > 1) {
+      primary.appendChild(el('span', {
+        class: 'card-callno-more',
+        title: formatRemainingHoldings(holdings.slice(1))
+      }, [' +' + (holdings.length - 1) + ' more']));
+    }
+    return primary;
+  }
+
+  function formatHoldingLine(h) {
+    var parts = [];
+    if (h.call_number) parts.push(h.call_number);
+    if (h.library)     parts.push(h.library);
+    else if (h.location) parts.push(h.location);
+    return parts.join(' — ');
+  }
+
+  function formatRemainingHoldings(rest) {
+    return rest.map(formatHoldingLine).join('\n');
+  }
+
   // ── Build a single table row ────────────────────────────────────────
   function buildRow(item, hasSubject) {
+    var fullTitle = item.title || '';
+
     var coverChild = item.cover_url
       ? el('img', { src: item.cover_url, alt: '', loading: 'lazy' })
       : el('div', {
@@ -134,22 +198,19 @@
           'aria-hidden': 'true'
         });
 
-    var titleChildren = [];
-    if (item.eds_url) {
-      titleChildren.push(el('a', {
-        class:  'row-title',
-        href:   item.eds_url,
-        target: '_blank',
-        rel:    'noopener noreferrer'
-      }, [item.title || '']));
-    } else {
-      titleChildren.push(el('span', { class: 'row-title' }, [item.title || '']));
-    }
-    if (item.publisher || item.year) {
-      var meta = (item.publisher || '') +
-                 (item.publisher && item.year ? ', ' : '') +
-                 (item.year || '');
-      titleChildren.push(el('div', { class: 'col-meta' }, [meta]));
+    var titleNode = item.eds_url
+      ? el('a', {
+          class:  'row-title',
+          href:   item.eds_url,
+          title:  fullTitle,
+          target: '_blank',
+          rel:    'noopener noreferrer'
+        }, [fullTitle])
+      : el('span', { class: 'row-title', title: fullTitle }, [fullTitle]);
+
+    var titleChildren = [titleNode];
+    if (item.year) {
+      titleChildren.push(el('div', { class: 'col-meta' }, [item.year]));
     }
 
     var cells = [
@@ -162,13 +223,44 @@
       cells.push(el('td', { class: 'col-meta' }, [item.subject_group || '']));
     }
     cells.push(
-      el('td', { class: 'col-meta' }, [item.call_number || '']),
+      el('td', { class: 'col-meta' }, [buildHoldingsCell(item)]),
       el('td', { class: 'col-meta col-date' }, [item.receipt_date || ''])
     );
 
     var attrs = dataAttrs(item);
     attrs.class = 'material-row filterable-item';
     return el('tr', attrs, cells);
+  }
+
+  // ── Table version of the holdings cell ──────────────────────────────
+  function buildHoldingsCell(item) {
+    var holdings = item.holdings || [];
+    if (holdingsMode === 'none' || holdings.length === 0) {
+      return document.createTextNode(item.call_number || '');
+    }
+    if (holdingsMode === 'compact') {
+      return document.createTextNode(
+        holdings.length + (holdings.length === 1 ? ' copy' : ' copies')
+      );
+    }
+    if (holdingsMode === 'detailed') {
+      var list = el('ul', { class: 'table-holdings' });
+      holdings.forEach(function (h) {
+        list.appendChild(el('li', null, [formatHoldingLine(h)]));
+      });
+      return list;
+    }
+    // summary
+    var first = holdings[0];
+    var label = formatHoldingLine(first);
+    if (holdings.length > 1) {
+      label += ' +' + (holdings.length - 1);
+    }
+    var span = el('span', null, [label]);
+    if (holdings.length > 1) {
+      span.title = formatRemainingHoldings(holdings.slice(1));
+    }
+    return span;
   }
 
   // ── Render both views ───────────────────────────────────────────────

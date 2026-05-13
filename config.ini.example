@@ -14,8 +14,13 @@ tenant = fs00001006
 # Account with read access to orders and inventory
 username = your_username
 password = your_password
-# Optional: FOLIO Edge API base URL (leave blank if not used)
+# Optional: FOLIO Edge API base URL (leave blank to skip RTAC lookups).
+# When edge_api AND edge_api_key are set, the generator fetches live
+# holdings (call numbers, locations, statuses) via /prod/rtac/folioRTAC
+# for every item.  Works with consortia where one instance has copies
+# at multiple libraries.
 edge_api =
+edge_api_key =
 
 [eds]
 # EDS OpenURL path component — the "4e4lys" in /c/4e4lys/openurl
@@ -58,6 +63,12 @@ primary_color = #003366
 accent_color = #ffffff
 # Default view when the user has no saved preference: grid | table
 default_view = grid
+# How to render multi-holding items (RTAC must be configured to populate this):
+#   none     — never show holdings info on cards
+#   compact  — show just the copy count: "3 copies"
+#   summary  — show the first call number + library, with "+N more" if more (default)
+#   detailed — show every holding as a list
+holdings_display = summary
 
 [material_types]
 # Map material-type UUID to the label shown in the format dropdown.
@@ -77,14 +88,27 @@ default_view = grid
 
 [subject_groups]
 # Optional: group items by high-level subject area.
-# Each line is:  Group Name = comma-separated keywords (case-insensitive)
-# An item is placed in the FIRST group whose keyword appears in any of its
-# FOLIO subject headings.  Items that match no group are listed as "Other".
 #
-# Leave this section empty (or omit it) to disable subject grouping.
+# Two modes available:
 #
-# Example:
-# Engineering = engineering, computer, programming, mathematics, physics, electronics, technology
-# Humanities = literature, philosophy, history, art, music, poetry, religion, theology
-# Sciences = biology, chemistry, geology, ecology, neuroscience, astronomy
-# Social Sciences = sociology, psychology, anthropology, economics, political, education
+# 1. MANUAL GROUPS — list group names and keywords here.  Each line is:
+#       Group Name = comma-separated keywords (case-insensitive)
+#    Items are placed in the FIRST group whose keyword appears in any of
+#    their FOLIO subject headings; items that match no group are listed
+#    as "Other".  This gives the most curated dropdown.
+#
+# 2. AUTOMATIC GROUPS — set `auto_group = true` (and leave the section
+#    otherwise empty).  The generator then derives groups from each item's
+#    primary LC subject heading (the text before any " -- " subdivision),
+#    sorted by frequency.  Good for small libraries that haven't yet built
+#    a curated subject taxonomy.
+#
+# Leave this section empty AND auto_group unset to disable subject grouping.
+#
+# Examples:
+#
+# auto_group = true
+#
+# Engineering = engineering, computer, programming, mathematics, physics
+# Humanities  = literature, philosophy, history, art, music
+# Sciences    = biology, chemistry, geology, ecology, astronomy

@@ -34,6 +34,7 @@ from typing import Optional
 
 from src.config_loader import Config, ConfigError
 from src.folio_client import FolioClient, FolioAuthError
+from src.edge_client import EdgeClient, normalize_holdings
 from src.google_images import fetch_cover_image
 from src.tmdb_client import fetch_tmdb_poster
 from src.html_generator import (
@@ -261,8 +262,22 @@ def main() -> int:
             log.warning("Could not fetch material types: %s", exc)
             material_type_map = {}
 
+    # Fetch live holdings from the Edge RTAC endpoint when configured.
+    # Provides authoritative call numbers, locations, statuses, and supports
+    # consortia where a single instance has copies at multiple libraries.
+    rtac_holdings: dict[str, list[dict]] = {}
+    if config.edge_enabled and instance_ids:
+        log.info("Fetching live holdings via Edge RTAC for %d instances …", len(set(instance_ids)))
+        edge = EdgeClient(config.folio_edge_api, config.folio_edge_api_key)
+        rtac_raw = edge.get_rtac_batch(list(set(instance_ids)))
+        rtac_holdings = {iid: normalize_holdings(data) for iid, data in rtac_raw.items()}
+        log.info("Got RTAC data for %d / %d instances", len(rtac_holdings), len(set(instance_ids)))
+
     # Build display items
-    items = build_items(order_lines, instances, material_type_map, config)
+    items = build_items(
+        order_lines, instances, material_type_map, config,
+        rtac_holdings=rtac_holdings,
+    )
 
     # Optionally enrich with cover images
     _enrich_with_images(items, config, skip=args.no_images)
