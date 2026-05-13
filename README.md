@@ -156,18 +156,32 @@ Humanities  = literature, philosophy, history, art, music
 Sciences    = biology, chemistry, geology, ecology, astronomy
 ```
 
-**LCC-based groups:**  set `lcc_grouping = true` and leave the rest empty.
-Each item is classified by the first letter of its call number against
-the Library of Congress top-level classes (e.g. `QA76` → `Q` → "Science").
-Reliable for LCC-using libraries, requires no external API.
+**LCC-based groups:**  set `lcc_grouping = true`.  Each item is classified
+against the LCC class map shipped at `static/lcc-classes.json` (also copied
+to `output/assets/lcc-classes.json` so it's auditable next to the page).
+Longest-prefix matching gives ~150 buckets rather than 20:
 
-Libraries on Dewey or local schemes will see most items in "Other" —
-prefer manual groups in that case.
+- `PN51 .T7` → "Literature (General); Drama; Journalism" (PN match)
+- `PS3558 .E63` → "American Literature" (PS match)
+- `QA76.5` → "Mathematics; Computer Science" (QA match)
+- `P51 .X` → "Language and Literature" (no PX in map, falls back to P)
+- `641.5 SMI` → no match (Dewey doesn't start with a letter)
+
+The two modes compose: when both are set, manual groups match first;
+items the keywords don't catch fall through to LCC instead of going
+straight to "Other".  Libraries on Dewey or local schemes should
+prefer manual groups.
 
 ```ini
 [subject_groups]
 lcc_grouping = true
+
+# Optional: hand-curated overrides that take precedence over LCC
+# Engineering = engineering, computer, programming
 ```
+
+To edit or extend the class map, change `static/lcc-classes.json` —
+new entries are picked up on the next run.
 
 When either mode is active, a second filter dropdown ("Subject area")
 appears in the toolbar.

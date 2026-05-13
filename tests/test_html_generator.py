@@ -286,7 +286,27 @@ class TestBuildItems:
             cfg,
             rtac_holdings=rtac,
         )
-        assert items[0]["subject_group"] == "Science"
+        # QA → Mathematics; Computer Science (more granular than just "Science")
+        assert items[0]["subject_group"] == "Mathematics; Computer Science"
+
+    def test_manual_groups_fall_through_to_lcc_when_no_keyword_matches(self):
+        """Regression: manual groups used to short-circuit to Other on a miss."""
+        cfg = _config(
+            subject_groups={"Engineering": ["computer", "programming"]},
+            lcc_grouping=True,
+        )
+        # Item is literature (PN51), manual keywords don't match — should fall
+        # through to LCC instead of getting "Other"
+        rtac = {SAMPLE_INSTANCE["id"]: [{"call_number": "PN51 .T7 2022", "library": "Main"}]}
+        instance = dict(SAMPLE_INSTANCE, subjects=["Communism and literature"])
+        items = build_items(
+            [SAMPLE_ORDER_LINE],
+            {instance["id"]: instance},
+            {},
+            cfg,
+            rtac_holdings=rtac,
+        )
+        assert items[0]["subject_group"] == "Literature (General); Drama; Journalism"
 
     def test_lcc_grouping_assigns_other_for_dewey(self):
         cfg = _config(lcc_grouping=True)

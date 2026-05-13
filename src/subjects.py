@@ -1,14 +1,26 @@
 """
 Subject-heading classification.
 
-Maps an item's FOLIO subjects array onto one of several user-defined subject
-groups using simple keyword matching.  Each group is defined by a list of
-keywords; an item is placed in the first group whose keyword appears in any
-of its subject strings (case-insensitive substring match).
+Two grouping mechanisms are exposed:
+
+  1. Keyword classification (classify_subject) — matches an item's FOLIO
+     subjects against a user-defined map of group → keywords.  Curated.
+
+  2. LCC-class lookup (lcc_class_from_call_number) — derives a high-level
+     subject area from the item's call number using a longest-prefix match
+     against the LCC class map shipped at static/lcc-classes.json.  Automatic.
+
+generate.py uses these in combination: manual groups first, LCC as a
+fallback when the manual groups don't match.
 """
 
+import json
+import logging
 import re
+from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 _UNGROUPED_LABEL = "Other"
 
@@ -69,56 +81,82 @@ def ungrouped_label() -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Library of Congress Classification (LCC) — top-level classes.
-# Reliable, well-known taxonomy.  When `lcc_grouping = true` is set in
-# config, each item's call number's leading letter maps to one of these.
-# Libraries using Dewey or other schemes will not match and the items
-# will land in "Other".
+# Library of Congress Classification (LCC) lookup.
+# The class map lives in static/lcc-classes.json so it can be audited
+# and extended without code changes.  Loaded once and cached.
 # ─────────────────────────────────────────────────────────────────────
-LCC_TOP_CLASSES = {
-    "A": "General Works",
-    "B": "Philosophy & Religion",
-    "C": "Auxiliary Sciences of History",
-    "D": "World History",
-    "E": "American History",       # E and F both cover the Americas
-    "F": "American History",
-    "G": "Geography & Anthropology",
-    "H": "Social Sciences",
-    "J": "Political Science",
-    "K": "Law",
-    "L": "Education",
-    "M": "Music",
-    "N": "Fine Arts",
-    "P": "Language & Literature",
-    "Q": "Science",
-    "R": "Medicine",
-    "S": "Agriculture",
-    "T": "Technology",
-    "U": "Military Science",
-    "V": "Naval Science",
-    "Z": "Library Science",
-}
+
+_LCC_JSON_PATH = Path(__file__).parent.parent / "static" / "lcc-classes.json"
+_LCC_MAP_CACHE: Optional[dict] = None
+# Max alpha-prefix length to consider when matching (most LCC subclasses
+# are 1-3 letters; a few use 4 but they're rare and not in our map).
+_MAX_PREFIX_LEN = 3
+
+
+def load_lcc_map() -> dict:
+    """
+    Load the LCC class map from static/lcc-classes.json (cached).
+
+    Returns an empty dict on read error.  Comment keys starting with "_"
+    are filtered out so they cannot accidentally shadow a real prefix.
+    """
+    global _LCC_MAP_CACHE
+    if _LCC_MAP_CACHE is not None:
+        return _LCC_MAP_CACHE
+    try:
+        with _LCC_JSON_PATH.open(encoding="utf-8") as f:
+            raw = json.load(f)
+        _LCC_MAP_CACHE = {
+            k.upper(): v
+            for k, v in raw.items()
+            if not k.startswith("_") and isinstance(v, str)
+        }
+    except (OSError, ValueError) as exc:
+        logger.warning("Could not load LCC class map from %s: %s", _LCC_JSON_PATH, exc)
+        _LCC_MAP_CACHE = {}
+    return _LCC_MAP_CACHE
+
+
+def _reset_lcc_cache_for_tests() -> None:
+    """Test helper — forces the next load_lcc_map() call to re-read from disk."""
+    global _LCC_MAP_CACHE
+    _LCC_MAP_CACHE = None
 
 
 def lcc_class_from_call_number(call_number: str) -> Optional[str]:
     """
-    Map a call number to its top-level LCC class label.
+    Map a call number to its LCC class label via longest-prefix lookup.
 
-    Looks at the first alphabetic character (e.g. "QA76.5" → "Q" → "Science").
-    Returns None when the call number is empty, non-LCC, or starts with a digit
-    (Dewey, SuDoc, local schemes).
+    Tries the leading alpha prefix at decreasing lengths so that "PN51 .T7"
+    matches "PN" → "Literature (General); Drama; Journalism" before falling
+    back to "P" → "Language and Literature".
 
-    This is a deliberately shallow classification — exactly two characters of
-    the call number tell us nothing finer than "broad subject area", but that
-    matches the granularity a "new materials" dropdown needs.
+    Returns None when the call number is empty, non-LCC, or starts with a
+    digit (Dewey, SuDoc, local schemes).
     """
     if not call_number:
         return None
-    cn = call_number.strip()
-    if not cn:
+    cn = call_number.strip().upper()
+    if not cn or not cn[0].isalpha():
         return None
-    first = cn[0].upper()
-    return LCC_TOP_CLASSES.get(first)
+
+    # Extract the leading alpha run, capped at _MAX_PREFIX_LEN
+    prefix = ""
+    for ch in cn:
+        if not ch.isalpha():
+            break
+        prefix += ch
+        if len(prefix) >= _MAX_PREFIX_LEN:
+            break
+
+    lcc_map = load_lcc_map()
+    # Longest-match: shrink the prefix one character at a time until we hit
+    while prefix:
+        match = lcc_map.get(prefix)
+        if match:
+            return match
+        prefix = prefix[:-1]
+    return None
 
 
 def normalize_subjects(subjects: list) -> list[str]:

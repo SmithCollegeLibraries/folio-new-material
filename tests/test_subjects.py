@@ -107,23 +107,36 @@ def test_flatten_subjects_strips_punctuation():
 
 
 class TestLccClass:
-    def test_q_is_science(self):
-        assert lcc_class_from_call_number("QA76.5 .S5 2024") == "Science"
+    def test_two_letter_subclass_wins_over_one_letter(self):
+        # PN51 should resolve to PN (Literature/Drama/Journalism), not just P
+        assert lcc_class_from_call_number("PN51 .T7 2022") == \
+            "Literature (General); Drama; Journalism"
 
-    def test_p_is_language_and_literature(self):
-        assert lcc_class_from_call_number("PS3558.E63 D8") == "Language & Literature"
+    def test_qa_is_mathematics(self):
+        # Was lumped under "Science" before — now finer
+        assert lcc_class_from_call_number("QA76.5 .S5 2024") == "Mathematics; Computer Science"
 
-    def test_lowercase_first_letter_works(self):
-        assert lcc_class_from_call_number("ta330 .B57") == "Technology"
+    def test_ps_is_american_literature(self):
+        assert lcc_class_from_call_number("PS3558.E63 D8") == "American Literature"
+
+    def test_p_alone_falls_back_to_language_and_literature(self):
+        # "P51" — only one alpha char before digits, so falls back to P
+        assert lcc_class_from_call_number("P51 .X1") == "Language and Literature"
+
+    def test_unknown_two_letter_falls_back_to_one_letter(self):
+        # QX is not in the map, but Q is
+        assert lcc_class_from_call_number("QX1 .X") == "Science"
+
+    def test_lowercase_input_works(self):
+        assert lcc_class_from_call_number("ta330 .B57") == "Civil Engineering"
 
     def test_strips_leading_whitespace(self):
-        assert lcc_class_from_call_number("  HF5429 .S5") == "Social Sciences"
+        assert lcc_class_from_call_number("  HF5429 .S5") == "Commerce"
 
     def test_empty_string_returns_none(self):
         assert lcc_class_from_call_number("") is None
 
     def test_dewey_decimal_returns_none(self):
-        # Dewey starts with a digit, not an LCC letter
         assert lcc_class_from_call_number("641.5 SMI") is None
 
     def test_unknown_letter_returns_none(self):

@@ -105,13 +105,22 @@ def build_items(
 
         call_number = _primary_call_number(holdings, line, instance)
 
-        # Subject grouping: manual groups win when configured; otherwise try
-        # LCC-class grouping from the call number (well-known top-level classes).
+        # Subject grouping: manual keyword match wins; LCC-class lookup picks
+        # up the slack when manual misses (or when no manual groups exist).
+        # Items that fall through every check end up in "Other" when any
+        # grouping mode is active, or "" when none is.
         subject_group = ""
-        if configured_groups:
-            subject_group = classify_subject(raw_subjects, configured_groups) or ungrouped_label()
+        manual_match = (
+            classify_subject(raw_subjects, configured_groups)
+            if configured_groups else None
+        )
+        if manual_match:
+            subject_group = manual_match
         elif lcc_on:
             subject_group = lcc_class_from_call_number(call_number) or ungrouped_label()
+        elif configured_groups:
+            # Manual groups configured but neither matched nor LCC available
+            subject_group = ungrouped_label()
 
         item = {
             "id": line.get("id", instance_id),
@@ -216,31 +225,39 @@ def generate_html(
     }
 
     # Subject groups that actually appear in the item list.
-    # - Manual [subject_groups]: keep config order, then "Other" at the end.
-    # - LCC grouping: frequency-sorted, then "Other".
+    # Items can carry either a manual group name (matched by keywords) or
+    # an LCC class label (fallback).  Build the dropdown from what's there:
+    #   - Manual groups first, in config order
+    #   - LCC labels next, sorted by frequency
+    #   - "Other" at the end if any items couldn't be classified
     configured_groups = getattr(config, "subject_groups", None) or {}
     lcc_on = getattr(config, "lcc_grouping", False)
     active_subject_groups: dict[str, int] = {}
 
-    if configured_groups:
-        for name in configured_groups:
-            count = sum(1 for i in items if i.get("subject_group") == name)
-            if count > 0:
-                active_subject_groups[name] = count
-        other_count = sum(1 for i in items if i.get("subject_group") == ungrouped_label())
-        if other_count > 0:
-            active_subject_groups[ungrouped_label()] = other_count
-
-    elif lcc_on:
-        group_counts: dict[str, int] = {}
+    if configured_groups or lcc_on:
+        # Count every distinct subject_group value present in items
+        all_counts: dict[str, int] = {}
         for item in items:
             g = item.get("subject_group") or ""
-            if g and g != ungrouped_label():
-                group_counts[g] = group_counts.get(g, 0) + 1
-        for name, gcount in sorted(group_counts.items(), key=lambda kv: (-kv[1], kv[0])):
+            if not g:
+                continue
+            all_counts[g] = all_counts.get(g, 0) + 1
+
+        # 1. Configured manual groups first, in config order (when present in data)
+        for name in configured_groups:
+            if name in all_counts:
+                active_subject_groups[name] = all_counts.pop(name)
+
+        # 2. Pop "Other" so it can be appended at the end
+        other_count = all_counts.pop(ungrouped_label(), 0)
+
+        # 3. Everything left over is an LCC label (or another unforeseen
+        # group); sort by frequency, then alphabetical for stable order
+        for name, gcount in sorted(all_counts.items(), key=lambda kv: (-kv[1], kv[0])):
             active_subject_groups[name] = gcount
-        other_count = sum(1 for i in items if i.get("subject_group") == ungrouped_label())
-        if other_count > 0:
+
+        # 4. "Other" at the end
+        if other_count:
             active_subject_groups[ungrouped_label()] = other_count
 
     # Embed the items as a JSON string inside <script type="application/json">.
@@ -309,7 +326,8 @@ def write_assets(output_html_path: str) -> None:
     out_dir = Path(output_html_path).parent
     assets_dir = out_dir / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
-    for filename in ("styles.css", "app.js"):
+    # Style, behaviour, and the LCC class map (auditable / editable data)
+    for filename in ("styles.css", "app.js", "lcc-classes.json"):
         src = _STATIC_DIR / filename
         if not src.exists():
             logger.warning("Static asset missing: %s", src)
