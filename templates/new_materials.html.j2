@@ -43,6 +43,9 @@
         <input id="search-input" type="search" placeholder="Type to filter…" autocomplete="off">
       </div>
 
+      {# Hide the format dropdown when only one type is present (per-type pages,
+         or a single-format result).  Saves UI noise without breaking JS. #}
+      {% if active_types|length > 1 %}
       <div class="toolbar-field">
         <label for="format-filter">Format</label>
         <select id="format-filter" aria-controls="materials-grid materials-table">
@@ -52,6 +55,7 @@
           {% endfor %}
         </select>
       </div>
+      {% endif %}
 
       {% if subject_grouping_enabled %}
       <div class="toolbar-field">

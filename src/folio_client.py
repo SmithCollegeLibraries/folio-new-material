@@ -86,6 +86,24 @@ class FolioClient:
         data = resp.json()
         return {mt["id"]: mt.get("name", "") for mt in data.get("mtypes", []) if mt.get("id")}
 
+    def get_locations(self) -> dict[str, str]:
+        """
+        Fetch every shelving-location definition from FOLIO and return UUID → name.
+
+        Used to translate ``effectiveLocationId`` on items into a human-readable
+        label on the fallback (non-RTAC) holdings path.
+        """
+        url = f"{self._base_url}/locations"
+        try:
+            resp = self._get(url, params={"limit": 1000})
+            resp.raise_for_status()
+        except Exception as exc:
+            logger.warning("Location lookup failed: %s", exc)
+            return {}
+
+        data = resp.json()
+        return {loc["id"]: loc.get("name", "") for loc in data.get("locations", []) if loc.get("id")}
+
     def get_instances(self, instance_ids: list[str]) -> dict[str, dict]:
         """
         Fetch instance records from mod-search for a list of UUIDs.

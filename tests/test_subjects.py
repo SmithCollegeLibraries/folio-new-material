@@ -4,7 +4,7 @@ from src.subjects import (
     classify_subject,
     parse_groups_config,
     ungrouped_label,
-    auto_classify,
+    lcc_class_from_call_number,
     normalize_subjects,
     _flatten_subjects,
 )
@@ -103,30 +103,32 @@ def test_flatten_subjects_strips_punctuation():
     assert "--" not in blob  # collapsed to whitespace
 
 
-# ── auto_classify ────────────────────────────────────────────────────
+# ── lcc_class_from_call_number ───────────────────────────────────────
 
 
-class TestAutoClassify:
-    def test_strips_lc_subdivision(self):
-        assert auto_classify(["History -- 20th century -- Sources"]) == "History"
+class TestLccClass:
+    def test_q_is_science(self):
+        assert lcc_class_from_call_number("QA76.5 .S5 2024") == "Science"
 
-    def test_handles_double_dash_without_spaces(self):
-        assert auto_classify(["Mathematics--Study and teaching"]) == "Mathematics"
+    def test_p_is_language_and_literature(self):
+        assert lcc_class_from_call_number("PS3558.E63 D8") == "Language & Literature"
 
-    def test_returns_full_heading_when_no_subdivision(self):
-        assert auto_classify(["Mathematics"]) == "Mathematics"
+    def test_lowercase_first_letter_works(self):
+        assert lcc_class_from_call_number("ta330 .B57") == "Technology"
 
-    def test_picks_first_non_empty_subject(self):
-        assert auto_classify(["", "  ", "Biology -- Textbooks"]) == "Biology"
+    def test_strips_leading_whitespace(self):
+        assert lcc_class_from_call_number("  HF5429 .S5") == "Social Sciences"
 
-    def test_returns_none_for_empty_list(self):
-        assert auto_classify([]) is None
+    def test_empty_string_returns_none(self):
+        assert lcc_class_from_call_number("") is None
 
-    def test_handles_dict_shape(self):
-        assert auto_classify([{"value": "Physics -- Research"}]) == "Physics"
+    def test_dewey_decimal_returns_none(self):
+        # Dewey starts with a digit, not an LCC letter
+        assert lcc_class_from_call_number("641.5 SMI") is None
 
-    def test_strips_trailing_punctuation(self):
-        assert auto_classify(["History."]) == "History"
+    def test_unknown_letter_returns_none(self):
+        # X and Y are unassigned in LCC
+        assert lcc_class_from_call_number("X999 .X") is None
 
 
 # ── normalize_subjects ───────────────────────────────────────────────

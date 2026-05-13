@@ -125,6 +125,7 @@ Tried only when Google Books returns no cover.  Get a free API key at
 | `accent_color` | `#ffffff` | Text on primary background |
 | `default_view` | `grid` | Initial view (`grid` or `table`); per-user choice is then saved to localStorage |
 | `holdings_display` | `summary` | How to render multi-holding items: `none`, `compact`, `summary`, `detailed` |
+| `pages_per_type` | `false` | When `true`, write one HTML page per material type (e.g. `new-books.html`) instead of a single combined page |
 
 #### `[material_types]`
 Maps FOLIO material-type UUIDs to display labels for the format dropdown.
@@ -155,19 +156,42 @@ Humanities  = literature, philosophy, history, art, music
 Sciences    = biology, chemistry, geology, ecology, astronomy
 ```
 
-**Auto-derived groups:**  set `auto_group = true` and leave the rest empty.
-The generator extracts each item's primary LC subject heading (the text
-before any " -- " subdivision) and uses that as the group label, sorted
-by frequency in the dropdown.  Good for small libraries that haven't built
-a curated subject taxonomy yet.
+**LCC-based groups:**  set `lcc_grouping = true` and leave the rest empty.
+Each item is classified by the first letter of its call number against
+the Library of Congress top-level classes (e.g. `QA76` → `Q` → "Science").
+Reliable for LCC-using libraries, requires no external API.
+
+Libraries on Dewey or local schemes will see most items in "Other" —
+prefer manual groups in that case.
 
 ```ini
 [subject_groups]
-auto_group = true
+lcc_grouping = true
 ```
 
 When either mode is active, a second filter dropdown ("Subject area")
 appears in the toolbar.
+
+#### Pages per material type
+
+Set `[output] pages_per_type = true` to generate one HTML page per
+material type instead of a single combined page:
+
+```
+output/
+├── new-books.html       (only Books, no format dropdown)
+├── new-dvds.html        (only DVDs)
+├── new-music-cd.html
+├── assets/
+│   ├── styles.css
+│   └── app.js
+└── data/
+    └── items.json       (combined feed — all items)
+```
+
+Each page embeds only its own items as JSON.  The shared `data/items.json`
+still contains every item for programmatic consumers.  Useful when
+different staff want shareable per-format lists ("here's the new DVDs").
 
 #### Holdings and RTAC
 When `[folio] edge_api` and `edge_api_key` are both set, the generator

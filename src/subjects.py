@@ -68,40 +68,57 @@ def ungrouped_label() -> str:
     return _UNGROUPED_LABEL
 
 
-def auto_classify(subjects: list) -> Optional[str]:
-    """
-    Derive a subject-group label from an item's subjects automatically.
+# ─────────────────────────────────────────────────────────────────────
+# Library of Congress Classification (LCC) — top-level classes.
+# Reliable, well-known taxonomy.  When `lcc_grouping = true` is set in
+# config, each item's call number's leading letter maps to one of these.
+# Libraries using Dewey or other schemes will not match and the items
+# will land in "Other".
+# ─────────────────────────────────────────────────────────────────────
+LCC_TOP_CLASSES = {
+    "A": "General Works",
+    "B": "Philosophy & Religion",
+    "C": "Auxiliary Sciences of History",
+    "D": "World History",
+    "E": "American History",       # E and F both cover the Americas
+    "F": "American History",
+    "G": "Geography & Anthropology",
+    "H": "Social Sciences",
+    "J": "Political Science",
+    "K": "Law",
+    "L": "Education",
+    "M": "Music",
+    "N": "Fine Arts",
+    "P": "Language & Literature",
+    "Q": "Science",
+    "R": "Medicine",
+    "S": "Agriculture",
+    "T": "Technology",
+    "U": "Military Science",
+    "V": "Naval Science",
+    "Z": "Library Science",
+}
 
-    Strategy: take the first subject and strip any LC subdivision (anything
-    after " -- " or "--"), then return the main heading.  This gives broad
-    LC-style buckets like "History", "Computer programming", "Mathematics".
 
-    Returns:
-        Group label string, or None if there are no usable subjects.
+def lcc_class_from_call_number(call_number: str) -> Optional[str]:
     """
-    if not subjects:
+    Map a call number to its top-level LCC class label.
+
+    Looks at the first alphabetic character (e.g. "QA76.5" → "Q" → "Science").
+    Returns None when the call number is empty, non-LCC, or starts with a digit
+    (Dewey, SuDoc, local schemes).
+
+    This is a deliberately shallow classification — exactly two characters of
+    the call number tell us nothing finer than "broad subject area", but that
+    matches the granularity a "new materials" dropdown needs.
+    """
+    if not call_number:
         return None
-
-    for entry in subjects:
-        if isinstance(entry, str):
-            raw = entry
-        elif isinstance(entry, dict):
-            raw = entry.get("value") or entry.get("subject") or ""
-        else:
-            continue
-
-        if not raw or not raw.strip():
-            continue
-
-        # Strip LC subdivisions ("Heading -- Subdivision -- Form")
-        main = raw.split(" -- ", 1)[0]
-        main = main.split("--", 1)[0]
-        main = main.strip(" .,;:")  # tidy up trailing punctuation
-
-        if main:
-            return main
-
-    return None
+    cn = call_number.strip()
+    if not cn:
+        return None
+    first = cn[0].upper()
+    return LCC_TOP_CLASSES.get(first)
 
 
 def normalize_subjects(subjects: list) -> list[str]:

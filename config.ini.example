@@ -69,6 +69,11 @@ default_view = grid
 #   summary  — show the first call number + library, with "+N more" if more (default)
 #   detailed — show every holding as a list
 holdings_display = summary
+# When true, write one HTML page per material type (e.g. new-books.html,
+# new-dvds.html) instead of a single combined page with a format dropdown.
+# Useful for staff who want to share a per-format list independently.
+# Uses [material_types] when set; otherwise discovers types from the data.
+pages_per_type = false
 
 [material_types]
 # Map material-type UUID to the label shown in the format dropdown.
@@ -97,17 +102,17 @@ holdings_display = summary
 #    their FOLIO subject headings; items that match no group are listed
 #    as "Other".  This gives the most curated dropdown.
 #
-# 2. AUTOMATIC GROUPS — set `auto_group = true` (and leave the section
-#    otherwise empty).  The generator then derives groups from each item's
-#    primary LC subject heading (the text before any " -- " subdivision),
-#    sorted by frequency.  Good for small libraries that haven't yet built
-#    a curated subject taxonomy.
+# 2. LCC GROUPING — set `lcc_grouping = true` (and leave the section
+#    otherwise empty).  Each item is classified by the first letter of its
+#    call number against the Library of Congress top-level classes (e.g.
+#    QA76 → Q → "Science").  Reliable for libraries that use LCC;
+#    libraries on Dewey or local schemes will see most items in "Other".
 #
-# Leave this section empty AND auto_group unset to disable subject grouping.
+# Leave this section empty AND lcc_grouping unset to disable subject grouping.
 #
 # Examples:
 #
-# auto_group = true
+# lcc_grouping = true
 #
 # Engineering = engineering, computer, programming, mathematics, physics
 # Humanities  = literature, philosophy, history, art, music

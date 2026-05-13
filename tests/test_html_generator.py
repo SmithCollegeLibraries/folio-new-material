@@ -40,7 +40,7 @@ def _config(
     institution_name="Test Library",
     institution_logo_url="",
     subject_groups=None,
-    auto_group_subjects=False,
+    lcc_grouping=False,
     default_view="grid",
     holdings_display="summary",
 ):
@@ -56,7 +56,7 @@ def _config(
     cfg.institution_name = institution_name
     cfg.institution_logo_url = institution_logo_url
     cfg.subject_groups = subject_groups or {}
-    cfg.auto_group_subjects = auto_group_subjects
+    cfg.lcc_grouping = lcc_grouping
     cfg.default_view = default_view
     cfg.holdings_display = holdings_display
     return cfg
@@ -274,36 +274,82 @@ class TestBuildItems:
         )
         assert items[0]["subjects"] == ["Engineering", "Mathematics"]
 
-    def test_auto_grouping_uses_primary_heading(self):
-        cfg = _config(auto_group_subjects=True)
-        instance = dict(SAMPLE_INSTANCE, subjects=["Civil engineering -- 21st century"])
-        items = build_items(
-            [SAMPLE_ORDER_LINE], {instance["id"]: instance}, {}, cfg,
-        )
-        assert items[0]["subject_group"] == "Civil engineering"
-
-    def test_auto_grouping_assigns_other_when_no_subjects(self):
-        cfg = _config(auto_group_subjects=True)
-        # SAMPLE_INSTANCE has no subjects field
+    def test_lcc_grouping_classifies_by_call_number(self):
+        cfg = _config(lcc_grouping=True)
+        rtac = {SAMPLE_INSTANCE["id"]: [
+            {"call_number": "QA76.5 .S5", "library": "Main", "location": "Stacks"},
+        ]}
         items = build_items(
             [SAMPLE_ORDER_LINE],
             {SAMPLE_INSTANCE["id"]: SAMPLE_INSTANCE},
             {},
             cfg,
+            rtac_holdings=rtac,
+        )
+        assert items[0]["subject_group"] == "Science"
+
+    def test_lcc_grouping_assigns_other_for_dewey(self):
+        cfg = _config(lcc_grouping=True)
+        rtac = {SAMPLE_INSTANCE["id"]: [
+            {"call_number": "641.5 SMI", "library": "Main", "location": "Stacks"},
+        ]}
+        items = build_items(
+            [SAMPLE_ORDER_LINE],
+            {SAMPLE_INSTANCE["id"]: SAMPLE_INSTANCE},
+            {},
+            cfg,
+            rtac_holdings=rtac,
         )
         assert items[0]["subject_group"] == "Other"
 
-    def test_manual_groups_take_precedence_over_auto(self):
-        # When both configured, manual wins
+    def test_manual_groups_take_precedence_over_lcc(self):
         cfg = _config(
             subject_groups={"Sciences": ["chemistry"]},
-            auto_group_subjects=True,
+            lcc_grouping=True,
         )
         instance = dict(SAMPLE_INSTANCE, subjects=["Chemistry -- General"])
         items = build_items(
             [SAMPLE_ORDER_LINE], {instance["id"]: instance}, {}, cfg,
         )
         assert items[0]["subject_group"] == "Sciences"
+
+    def test_fallback_holdings_from_instance_items(self):
+        """When RTAC has nothing, build holdings from instance.items[]."""
+        instance = dict(SAMPLE_INSTANCE, items=[
+            {
+                "id": "item-1",
+                "barcode": "12345",
+                "status": {"name": "Available"},
+                "effectiveLocationId": "loc-uuid-1",
+                "effectiveCallNumberComponents": {"callNumber": "QA76.5 .S5"},
+            },
+        ])
+        locations = {"loc-uuid-1": "Smith Neilson Stacks"}
+        items = build_items(
+            [SAMPLE_ORDER_LINE],
+            {instance["id"]: instance},
+            {},
+            _config(),
+            rtac_holdings={},   # RTAC empty
+            locations_map=locations,
+        )
+        assert len(items[0]["holdings"]) == 1
+        assert items[0]["holdings"][0]["call_number"] == "QA76.5 .S5"
+        assert items[0]["holdings"][0]["location"] == "Smith Neilson Stacks"
+        assert items[0]["holdings"][0]["status"] == "Available"
+        assert items[0]["call_number"] == "QA76.5 .S5"
+
+    def test_rtac_takes_priority_over_fallback(self):
+        """RTAC data wins even when instance.items[] has its own call numbers."""
+        instance = dict(SAMPLE_INSTANCE, items=[
+            {"effectiveCallNumberComponents": {"callNumber": "STALE-CN"}},
+        ])
+        rtac = {instance["id"]: [{"call_number": "LIVE-CN", "library": "Main"}]}
+        items = build_items(
+            [SAMPLE_ORDER_LINE], {instance["id"]: instance}, {}, _config(),
+            rtac_holdings=rtac,
+        )
+        assert items[0]["call_number"] == "LIVE-CN"
 
 
 # ── generate_html ─────────────────────────────────────────────────────
@@ -373,10 +419,9 @@ class TestGenerateHtml:
         html = generate_html([], {}, "2024-01-01", "2024-01-31", "now", cfg)
         assert "Smith College Libraries" in html
 
-    def test_contains_filter_script(self):
+    def test_loads_external_js(self):
         html = generate_html([], {}, "2024-01-01", "2024-01-31", "now", _config())
-        assert "format-filter" in html
-        # JS is loaded externally now
+        # JS bundle is linked regardless of items / dropdowns
         assert 'src="assets/app.js"' in html
 
     def test_no_xss_in_title(self):
@@ -419,6 +464,33 @@ class TestGenerateHtml:
         item = self._sample_item(cover_url=None, placeholder_color="#7d3f5d")
         html = generate_html([item], {}, "2024-01-01", "2024-01-31", "now", _config())
         assert "#7d3f5d" in html  # present in the JSON data block
+
+    def test_format_counts_render_when_lcc_grouping_enabled(self):
+        """Regression: counts variable was shadowed inside the LCC branch."""
+        cfg = _config(lcc_grouping=True)
+        items = [
+            self._sample_item(type_uuid="uuid-1", type_label="Books"),
+            self._sample_item(type_uuid="uuid-1", type_label="Books"),
+            self._sample_item(type_uuid="uuid-2", type_label="DVD"),
+        ]
+        html = generate_html(items, {"uuid-1": "Books", "uuid-2": "DVD"},
+                              "2024-01-01", "2024-01-31", "now", cfg)
+        assert "Books (2)" in html
+        assert "DVD (1)" in html
+
+    def test_format_dropdown_hidden_when_single_type(self):
+        # Single material type in the data → dropdown is useless, hide it
+        item = self._sample_item(type_uuid="only-one", type_label="Books")
+        html = generate_html([item], {}, "2024-01-01", "2024-01-31", "now", _config())
+        assert 'id="format-filter"' not in html
+
+    def test_format_dropdown_visible_with_two_types(self):
+        items = [
+            self._sample_item(type_uuid="uuid-1", type_label="Books"),
+            self._sample_item(type_uuid="uuid-2", type_label="DVD"),
+        ]
+        html = generate_html(items, {}, "2024-01-01", "2024-01-31", "now", _config())
+        assert 'id="format-filter"' in html
 
 
 # ── Data envelope & write helpers ─────────────────────────────────────

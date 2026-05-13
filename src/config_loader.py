@@ -183,6 +183,18 @@ class Config:
         raw = self._get("output", "holdings_display", "summary").lower()
         return raw if raw in ("none", "compact", "summary", "detailed") else "summary"
 
+    @property
+    def pages_per_type(self) -> bool:
+        """
+        When true, generate one HTML page per material type instead of one
+        combined page with a format dropdown.  Useful for staff who want
+        a shareable per-format list (e.g. new-books.html, new-dvds.html).
+        Uses [material_types] when set; otherwise the types discovered in
+        the data.
+        """
+        raw = self._get("output", "pages_per_type", "false").lower()
+        return raw in ("true", "1", "yes")
+
     # ------------------------------------------------------------------
     # Material types
     # ------------------------------------------------------------------
@@ -211,26 +223,30 @@ class Config:
         Returns a map of group name → list of keywords.
         Used to classify items by subject heading for grouped display.
 
-        The reserved key ``auto_group`` is filtered out — it controls the
-        auto-derivation behaviour (see ``auto_group_subjects``) rather than
-        defining a real group.
+        The reserved key ``lcc_grouping`` is filtered out — it toggles the
+        call-number-based grouping mode (see ``lcc_grouping``) rather than
+        defining a real keyword group.
         """
         if not self._parser.has_section("subject_groups"):
             return {}
         raw = {
             k: v for k, v in self._parser.items("subject_groups")
-            if k.lower() != "auto_group"
+            if k.lower() != "lcc_grouping"
         }
         return parse_groups_config(raw)
 
     @property
-    def auto_group_subjects(self) -> bool:
+    def lcc_grouping(self) -> bool:
         """
-        When true and no manual subject_groups are defined, derive grouping
-        labels from each item's primary subject heading (the part before
-        an LC " -- " subdivision).  Frequency-sorted in the dropdown.
+        When true and no manual subject_groups are defined, derive subject
+        groups from the Library of Congress top-level class encoded in each
+        item's call number (e.g. "QA76" → "Q" → "Science").
+
+        Reliable for LCC-using libraries; libraries on Dewey or other
+        schemes will see all items in "Other" and should prefer manual
+        groups instead.
         """
         if not self._parser.has_section("subject_groups"):
             return False
-        raw = self._parser.get("subject_groups", "auto_group", fallback="").strip().lower()
+        raw = self._parser.get("subject_groups", "lcc_grouping", fallback="").strip().lower()
         return raw in ("true", "1", "yes")

@@ -26,6 +26,7 @@ is not accidentally exposed by a web server:
 
 import argparse
 import logging
+import re
 import sys
 import time
 from datetime import date, timedelta
@@ -273,10 +274,20 @@ def main() -> int:
         rtac_holdings = {iid: normalize_holdings(data) for iid, data in rtac_raw.items()}
         log.info("Got RTAC data for %d / %d instances", len(rtac_holdings), len(set(instance_ids)))
 
+    # Fetch the locations map so the fallback (non-RTAC) holdings path can
+    # show human-readable location names rather than UUIDs.
+    try:
+        locations_map = client.get_locations()
+        log.info("Loaded %d location definitions", len(locations_map))
+    except Exception as exc:
+        log.warning("Could not fetch locations: %s", exc)
+        locations_map = {}
+
     # Build display items
     items = build_items(
         order_lines, instances, material_type_map, config,
         rtac_holdings=rtac_holdings,
+        locations_map=locations_map,
     )
 
     # Optionally enrich with cover images
@@ -285,35 +296,133 @@ def main() -> int:
     # Render HTML
     from datetime import datetime
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
-    html = generate_html(
-        items=items,
-        material_types=config.material_types,  # configured-only, drives dropdown ordering
-        start_date=start_date,
-        end_date=end_date,
-        generated_at=generated_at,
-        config=config,
-    )
-
-    # Write output: HTML + assets/ + data/items.json
     output_path = args.output or config.output_file
-    envelope = build_data_envelope(
+
+    # Single combined data feed is always written; per-type pages embed
+    # filtered JSON but consumers of items.json get the full set.
+    envelope_full = build_data_envelope(
         items=items,
         start_date=start_date,
         end_date=end_date,
         generated_at=generated_at,
         institution_name=config.institution_name,
     )
+
     try:
-        write_output(html, output_path, envelope=envelope)
+        if config.pages_per_type:
+            written = _write_per_type_pages(
+                items=items,
+                config=config,
+                material_type_map=material_type_map,
+                output_path=output_path,
+                start_date=start_date,
+                end_date=end_date,
+                generated_at=generated_at,
+                envelope_full=envelope_full,
+                log=log,
+            )
+            log.info("Done — wrote %d per-type page(s) plus shared assets/ and data/items.json", written)
+        else:
+            html = generate_html(
+                items=items,
+                material_types=config.material_types,
+                start_date=start_date,
+                end_date=end_date,
+                generated_at=generated_at,
+                config=config,
+            )
+            write_output(html, output_path, envelope=envelope_full)
+            log.info(
+                "Done — %d items written to %s (plus assets/ and data/items.json)",
+                len(items), output_path,
+            )
     except OSError as exc:
         log.error("Failed to write output: %s", exc)
         return 1
 
-    log.info(
-        "Done — %d items written to %s (plus assets/ and data/items.json)",
-        len(items), output_path,
-    )
     return 0
+
+
+def _slugify(text: str) -> str:
+    """Convert a label like 'Music CD' into a URL-safe slug 'music-cd'."""
+    cleaned = re.sub(r"[^\w\s-]", "", (text or "").lower())
+    slug = re.sub(r"[\s_-]+", "-", cleaned).strip("-")
+    return slug or "other"
+
+
+def _write_per_type_pages(
+    items, config, material_type_map, output_path,
+    start_date, end_date, generated_at, envelope_full, log,
+):
+    """
+    Generate one HTML page per material type.
+
+    File naming: new-{slug(type_label)}.html, sibling to ``output_path``.
+    Each page embeds only its own items; the combined data feed is still
+    written once to data/items.json next to the first page.
+
+    Returns the number of pages written.
+    """
+    # Group items by type_uuid
+    by_type: dict[str, list[dict]] = {}
+    for item in items:
+        key = item.get("type_uuid") or ""
+        by_type.setdefault(key, []).append(item)
+
+    if not by_type:
+        # No items at all — write a single empty page so the cron job's
+        # output is still consistent
+        empty_html = generate_html(
+            items=[], material_types={}, start_date=start_date, end_date=end_date,
+            generated_at=generated_at, config=config,
+        )
+        write_output(empty_html, output_path, envelope=envelope_full)
+        return 1
+
+    output_dir = Path(output_path).parent
+    pages_written = 0
+    written_combined_feed = False
+    used_slugs: set[str] = set()
+
+    for type_uuid, type_items in by_type.items():
+        type_label = type_items[0].get("type_label") or material_type_map.get(type_uuid) or "Other"
+
+        # Ensure unique filename across colliding slugs (rare but possible)
+        slug_base = _slugify(type_label)
+        slug = slug_base
+        n = 2
+        while slug in used_slugs:
+            slug = f"{slug_base}-{n}"
+            n += 1
+        used_slugs.add(slug)
+
+        page_path = output_dir / f"new-{slug}.html"
+        log.info("Writing %d %s items → %s", len(type_items), type_label, page_path.name)
+
+        # Build a per-type label map so the page header / metadata reflect
+        # only this one format
+        per_type_labels = {type_uuid: type_label} if type_uuid else {}
+
+        html = generate_html(
+            items=type_items,
+            material_types=per_type_labels,
+            start_date=start_date,
+            end_date=end_date,
+            generated_at=generated_at,
+            config=config,
+        )
+
+        # Write assets and the combined data feed once; subsequent pages
+        # just need the HTML alongside.
+        if not written_combined_feed:
+            write_output(html, str(page_path), envelope=envelope_full)
+            written_combined_feed = True
+        else:
+            write_output(html, str(page_path))  # HTML only — no envelope
+
+        pages_written += 1
+
+    return pages_written
 
 
 if __name__ == "__main__":

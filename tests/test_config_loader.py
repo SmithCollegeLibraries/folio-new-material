@@ -125,24 +125,33 @@ class TestMinimalConfig:
             "Sciences": ["biology", "chemistry"],
         }
 
-    def test_auto_group_subjects_false_by_default(self, tmp_path):
+    def test_lcc_grouping_false_by_default(self, tmp_path):
         cfg = Config(_write_config(tmp_path, MINIMAL_CONFIG))
-        assert cfg.auto_group_subjects is False
+        assert cfg.lcc_grouping is False
 
-    def test_auto_group_subjects_true_when_set(self, tmp_path):
-        content = MINIMAL_CONFIG + "\n[subject_groups]\nauto_group = true\n"
+    def test_lcc_grouping_true_when_set(self, tmp_path):
+        content = MINIMAL_CONFIG + "\n[subject_groups]\nlcc_grouping = true\n"
         cfg = Config(_write_config(tmp_path, content))
-        assert cfg.auto_group_subjects is True
+        assert cfg.lcc_grouping is True
 
-    def test_auto_group_key_excluded_from_groups_dict(self, tmp_path):
+    def test_lcc_grouping_key_excluded_from_groups_dict(self, tmp_path):
         content = MINIMAL_CONFIG + (
             "\n[subject_groups]\n"
-            "auto_group = false\n"
+            "lcc_grouping = false\n"
             "Engineering = computer\n"
         )
         cfg = Config(_write_config(tmp_path, content))
-        assert "auto_group" not in cfg.subject_groups
+        assert "lcc_grouping" not in cfg.subject_groups
         assert cfg.subject_groups == {"Engineering": ["computer"]}
+
+    def test_pages_per_type_false_by_default(self, tmp_path):
+        cfg = Config(_write_config(tmp_path, MINIMAL_CONFIG))
+        assert cfg.pages_per_type is False
+
+    def test_pages_per_type_true_when_set(self, tmp_path):
+        content = MINIMAL_CONFIG + "\n[output]\npages_per_type = true\n"
+        cfg = Config(_write_config(tmp_path, content))
+        assert cfg.pages_per_type is True
 
     def test_edge_disabled_when_no_key(self, tmp_path):
         cfg = Config(_write_config(tmp_path, MINIMAL_CONFIG))
