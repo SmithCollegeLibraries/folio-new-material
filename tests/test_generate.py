@@ -3,7 +3,12 @@
 import argparse
 from unittest.mock import MagicMock
 
-from generate import _slugify, _write_per_type_pages, _resolve_log_file
+from generate import (
+    _slugify,
+    _write_per_type_pages,
+    _resolve_log_file,
+    _warn_on_placeholder_config,
+)
 
 
 # ── _slugify ─────────────────────────────────────────────────────────
@@ -142,3 +147,43 @@ class TestResolveLogFile:
         cfg = MagicMock()
         cfg.log_file = "none"
         assert _resolve_log_file(_ns(log_file=None), cfg) is None
+
+
+# ── _warn_on_placeholder_config ──────────────────────────────────────
+
+
+def _placeholder_config(an_prefix, base_url="https://api.example.com",
+                         username="real_user", password="real_pass"):
+    cfg = MagicMock()
+    cfg.eds_an_prefix = an_prefix
+    cfg.folio_base_url = base_url
+    cfg.folio_username = username
+    cfg.folio_password = password
+    return cfg
+
+
+class TestPlaceholderWarning:
+    def test_warns_when_an_prefix_still_says_example(self):
+        log = MagicMock()
+        cfg = _placeholder_config("scf.oai.edge.example.folio.ebsco.com.fs00001006")
+        _warn_on_placeholder_config(cfg, log)
+        # At least one warning was logged, mentioning the offending key
+        assert log.warning.called
+        warning_args = " ".join(str(a) for a in log.warning.call_args.args)
+        assert "an_prefix" in warning_args
+        assert "example" in warning_args
+
+    def test_no_warning_when_prefix_is_real(self):
+        log = MagicMock()
+        cfg = _placeholder_config("scf.oai.edge.fivecolleges.folio.ebsco.com.fs00001006")
+        _warn_on_placeholder_config(cfg, log)
+        assert not log.warning.called
+
+    def test_warns_on_default_credentials(self):
+        log = MagicMock()
+        cfg = _placeholder_config(
+            "scf.oai.edge.fivecolleges.folio.ebsco.com.fs00001006",
+            username="your_username",
+        )
+        _warn_on_placeholder_config(cfg, log)
+        assert log.warning.called

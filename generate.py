@@ -94,6 +94,35 @@ def _setup_logging(verbose: bool, log_file: Optional[str]) -> None:
     logging.basicConfig(level=logging.DEBUG, handlers=handlers, force=True)
 
 
+def _warn_on_placeholder_config(config, log) -> None:
+    """
+    Spot common deployment mistakes where a user left a placeholder value
+    from config.ini.example in their live config.ini.
+
+    EDS won't actually fail loudly when this happens — it just returns
+    '/not_found/detailv2' for every link, which is easy to miss in a
+    cron-driven workflow.  Warn at startup so operators see it.
+    """
+    checks = [
+        ("eds", "an_prefix",  config.eds_an_prefix,
+         "example", "your tenant identifier (e.g. fivecolleges, mit, ...)"),
+        ("folio", "base_url", config.folio_base_url,
+         "api-example.folio.ebsco.com", "your Okapi gateway"),
+        ("folio", "username", config.folio_username,
+         "your_username", "an actual FOLIO username"),
+        ("folio", "password", config.folio_password,
+         "your_password", "the matching FOLIO password"),
+    ]
+    for section, key, value, placeholder, expected in checks:
+        if placeholder.lower() in (value or "").lower():
+            log.warning(
+                "[%s] %s appears to contain the placeholder %r from "
+                "config.ini.example — replace it with %s.  EDS will "
+                "return 'not_found' for every link otherwise.",
+                section, key, placeholder, expected,
+            )
+
+
 def _resolve_log_file(args: argparse.Namespace, config) -> Optional[str]:
     """
     Decide where (if anywhere) to write the log file.
@@ -293,6 +322,11 @@ def main() -> int:
     log.info("FOLIO New Materials — run starting %s",
              datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     log.info("Config: %s", args.config)
+
+    # Catch the most common deployment mistake: leaving placeholder
+    # values from config.ini.example in the live config.  EDS will
+    # silently return /not_found/detailv2 for every link in that case.
+    _warn_on_placeholder_config(config, log)
 
     # Resolve date window
     start_date, end_date = _resolve_dates(args, config)
