@@ -9,6 +9,15 @@ You do not need to be a programmer to set this up, but you do need to
 follow the instructions carefully. The total setup time, the first time,
 is usually about thirty minutes.
 
+## Live demo
+
+A working preview of the page is hosted at
+**https://smithcollegelibraries.github.io/folio-new-material/**
+
+The demo uses entirely synthetic data — no real library collection is
+represented. Browse the demo to see how the filter, sort, view-toggle,
+and subject-grouping features behave before deciding whether to install.
+
 ---
 
 ## Table of contents
@@ -782,6 +791,28 @@ ISBNs.
 automatically on a schedule.
 
 **Task Scheduler** — The Windows equivalent of cron.
+
+---
+
+## Regenerating the public demo
+
+The demo hosted on GitHub Pages is generated from `tools/generate_demo.py`,
+which feeds invented data through the real generator. To refresh the demo
+(after a UI change, for example):
+
+```
+python3 tools/generate_demo.py
+git add docs/
+git commit -m "Refresh GitHub Pages demo"
+git push
+```
+
+GitHub Pages serves the contents of the `docs/` folder on the `main`
+branch. To enable Pages on a fresh fork, go to Settings → Pages, choose
+"Deploy from a branch", and select `main` / `docs`.
+
+The `.nojekyll` file in `docs/` disables Jekyll processing, which would
+otherwise refuse to serve files in `assets/`.
 
 ---
 
