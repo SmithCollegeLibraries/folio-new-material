@@ -1,374 +1,810 @@
 # FOLIO New Materials
 
-Generates an accessible HTML5 page listing recently received library materials from
-FOLIO's orders API.  Designed to be run as an overnight cron job that publishes a
-small static site (HTML + CSS + JS + JSON) library staff can drop on any web server
-or open directly via `file://`.
+A small program that connects to your FOLIO library system every night,
+finds the books, DVDs, and other items that arrived that day, and produces
+a webpage your patrons can browse. The page shows the cover image, title,
+author, call number, and a link back to your discovery service (EDS).
 
-## Features
-
-- Queries FOLIO `/orders/order-lines` for items with receipt status *Fully Received*
-- Auto-discovers material-type names from FOLIO when not configured manually
-- Cover images via the free Google Books viewapi (ISBN / OCLC lookup, no API key)
-- Optional TMDB poster fallback for DVDs and video recordings
-- Color-coded placeholder covers when no image is available (material type + title)
-- EDS OpenURL deep links to each title's discovery page
-- Subject-area grouping via keyword-based classification (`[subject_groups]` config)
-- Grid view (6 columns at natural cover size) and a table view, toggled by the user
-  and remembered in localStorage
-- Title / author search, format filter, subject filter, sort (newest / alphabetical)
-- Active-filter chips with one-click "clear all"
-- Call-number display when present in holdings
-- JSON data feed (`data/items.json`) emitted alongside the HTML for RSS bridges,
-  dashboards, and other programmatic consumers
-- A11Y: semantic HTML5, ARIA live region for filter results, skip-to-content link,
-  40px touch targets, strong `:focus-visible` indicators, full keyboard navigation
-- Print-friendly stylesheet (3-column grid, plain borders, no printed URLs)
-- `<noscript>` fallback links users without JavaScript to the JSON data feed
+You do not need to be a programmer to set this up, but you do need to
+follow the instructions carefully. The total setup time, the first time,
+is usually about thirty minutes.
 
 ---
 
-## Quick start
+## Table of contents
 
-### 1. Install Python dependencies
+1. [What you get when this is running](#what-you-get-when-this-is-running)
+2. [What you will need before you start](#what-you-will-need-before-you-start)
+3. [Step 1. Install Python on your computer](#step-1-install-python-on-your-computer)
+4. [Step 2. Download this software](#step-2-download-this-software)
+5. [Step 3. Install the supporting Python libraries](#step-3-install-the-supporting-python-libraries)
+6. [Step 4. Create your settings file](#step-4-create-your-settings-file)
+7. [Step 5. Fill in the settings](#step-5-fill-in-the-settings)
+8. [Step 6. Run it once to test](#step-6-run-it-once-to-test)
+9. [Step 7. Schedule it to run automatically each night](#step-7-schedule-it-to-run-automatically-each-night)
+10. [Step 8. Publish the page so patrons can see it](#step-8-publish-the-page-so-patrons-can-see-it)
+11. [Updating the software later](#updating-the-software-later)
+12. [Troubleshooting](#troubleshooting)
+13. [Files this program writes](#files-this-program-writes)
+14. [Customising what your patrons see](#customising-what-your-patrons-see)
+15. [Keeping credentials safe](#keeping-credentials-safe)
+16. [Glossary](#glossary)
+17. [Reporting problems and contributing](#reporting-problems-and-contributing)
+18. [License](#license)
 
-```bash
+---
+
+## What you get when this is running
+
+Every morning, this program produces an accessible HTML page that lists
+the materials your library received in the last 30 days (or whatever
+window you configure). The page includes:
+
+- A header with your library's logo, name, and brand colors
+- A search box for filtering by title or author
+- A dropdown to filter by material type (Books, DVDs, Music CDs, etc.)
+- A dropdown for subject area (Engineering, Sciences, Humanities, etc.)
+- Sort options (newest first, alphabetical)
+- A toggle between a visual grid view and a compact table view
+- One card per item with cover image, title, author, year, call number,
+  location, and status
+
+Patrons click any title to jump straight to the catalog record in EDS.
+
+The output is a small static website (one HTML file plus a few support
+files). You can email it, copy it to a USB stick, post it to your library's
+web server, or just open it directly from your computer. No special
+hosting or database is required.
+
+---
+
+## What you will need before you start
+
+Before beginning, please make sure you have all of the following:
+
+### Required
+
+- **A computer.** Mac, Windows, or Linux. This program runs on all three.
+- **An internet connection.** The program talks to FOLIO and (optionally)
+  some other services over the internet.
+- **A FOLIO account with read permissions for Orders and Inventory.** Ask
+  your FOLIO administrator if you are not sure. The user account needs
+  to be able to read order lines and instance records.
+- **Your FOLIO Okapi gateway URL.** This is the base address of your
+  FOLIO system's API, such as `https://api-fivecolleges.folio.ebsco.com`.
+  Your FOLIO administrator can provide this.
+- **Your FOLIO tenant ID.** A short code that identifies your library
+  inside FOLIO, such as `fs00001006`.
+
+### Helpful (but not required)
+
+- **A FOLIO Edge API key.** If your institution uses the FOLIO Edge
+  service (most FOLIO sites do), this lets the program fetch live
+  shelf-status data and consortium-wide holdings. Without it the program
+  still works, but the call numbers and locations come from a slightly
+  less rich source.
+- **An EDS database ID and access-number prefix.** These let the page
+  link each title to your discovery service. If you do not have these
+  yet, the page still shows everything else; the titles just are not
+  clickable links.
+- **A TMDB API key.** Free from https://www.themoviedb.org. Adds cover
+  posters for DVDs and other video recordings. Books work without it.
+- **A web server, shared drive, or file server.** If you want patrons to
+  view the page, you will need somewhere to put the files. A static
+  hosting setup (the simplest kind) is sufficient.
+
+---
+
+## Step 1. Install Python on your computer
+
+This program is written in Python, so you need Python installed. Version
+3.9 or newer is required.
+
+### On a Mac
+
+Recent versions of macOS come with Python preinstalled, but it is often
+slightly old. To check what you have, open the Terminal application
+(press Command-Space, type "Terminal", press Return) and type:
+
+```
+python3 --version
+```
+
+If the version shown is 3.9 or higher, you are ready. If it is older,
+or you get an error, install Python from https://www.python.org/downloads/
+by clicking the yellow "Download Python" button on the homepage. Run the
+installer and accept the defaults.
+
+### On Windows
+
+Go to https://www.python.org/downloads/ and click the yellow
+"Download Python" button. Run the installer. **Important:** on the
+first screen of the installer, tick the box that says "Add Python to PATH"
+before clicking Install Now. If you skip this, later steps will fail with
+a "command not found" message.
+
+When the installer finishes, open Command Prompt (press the Windows key,
+type "cmd", press Enter) and type:
+
+```
+python --version
+```
+
+You should see something like `Python 3.12.1`.
+
+### On Linux
+
+Most Linux distributions ship Python by default. Open a terminal and run:
+
+```
+python3 --version
+```
+
+If the version is older than 3.9, install a newer one using your
+distribution's package manager. For Ubuntu or Debian:
+
+```
+sudo apt update
+sudo apt install python3 python3-pip
+```
+
+---
+
+## Step 2. Download this software
+
+You have two ways to do this. Either works.
+
+### Option A. Download as a ZIP file (no Git required)
+
+1. On the GitHub page for this project, click the green "Code" button.
+2. Choose "Download ZIP".
+3. Save the ZIP file somewhere you will remember, such as your Documents
+   folder.
+4. Double-click the ZIP file to unpack it. You will end up with a folder
+   named something like `folio-new-books-main`.
+5. Rename the folder to just `folio-new-books` if you would like a tidier
+   name.
+
+### Option B. Use Git (recommended if you plan to update later)
+
+If you already have Git installed, open a terminal and run:
+
+```
+git clone https://github.com/YOUR-ORG/folio-new-books.git
+```
+
+Replace `YOUR-ORG` with the actual GitHub organisation or username that
+hosts the code. This creates a folder named `folio-new-books` in your
+current directory.
+
+Throughout the rest of these instructions, when we say "the project
+folder", we mean this folder.
+
+---
+
+## Step 3. Install the supporting Python libraries
+
+The program uses a few small libraries that need to be installed
+separately. From within the project folder, open a terminal and run:
+
+On macOS or Linux:
+
+```
+pip3 install -r requirements.txt
+```
+
+On Windows:
+
+```
 pip install -r requirements.txt
 ```
 
-Python 3.9 or newer is required (uses `dict[str, str]` PEP-585 annotations).
+You will see a list of packages being downloaded and installed. The whole
+process takes about a minute. If you see no error at the end, you are
+done with this step.
 
-### 2. Create your config
+### If you see permission errors
 
-```bash
+If pip complains about not having permission to install, try adding
+`--user` to the command:
+
+```
+pip3 install --user -r requirements.txt
+```
+
+This installs the libraries into your own home directory, which always
+works even on shared machines.
+
+---
+
+## Step 4. Create your settings file
+
+The program needs to know things like your FOLIO username and password,
+your library's branding, and other preferences. These all live in a file
+called `config.ini`.
+
+We provide a template called `config.ini.example` that you should copy
+and then fill in.
+
+From inside the project folder, run:
+
+On macOS or Linux:
+
+```
 cp config.ini.example config.ini
 ```
 
-Edit `config.ini` and fill in at minimum:
+On Windows:
 
-| Key | Description |
-|-----|-------------|
-| `[folio] base_url` | Okapi gateway URL |
-| `[folio] username` | FOLIO account (needs orders + inventory read) |
-| `[folio] password` | FOLIO password |
-
-### 3. Run the generator
-
-```bash
-python generate.py
+```
+copy config.ini.example config.ini
 ```
 
-The generator writes three things into the same parent directory as the
-configured `output_file` (default `output/`):
+This creates your live settings file. You now have two similar files:
 
-- `new-materials.html` — the page shell with embedded item data
-- `assets/styles.css` and `assets/app.js` — copied from `static/`
-- `data/items.json` — the same item data as a standalone feed
+- `config.ini.example` — the template, kept for reference. Do not edit this.
+- `config.ini` — your actual settings, with your real passwords. Edit this.
+
+**Important.** The file `config.ini` contains your FOLIO password and
+other secrets. It is set up to be ignored by Git so it never accidentally
+ends up in a public repository. Never email it, post it on a help forum,
+or share it without removing the passwords first.
 
 ---
 
-## Configuration reference
+## Step 5. Fill in the settings
 
-See `config.ini.example` — every key is documented inline.
+Open `config.ini` in any text editor. On Mac, TextEdit works (but make
+sure to use "Format → Make Plain Text" first). On Windows, Notepad works
+fine. Programmers often use VS Code or Notepad++, but anything that saves
+plain text is acceptable.
 
-### Sections
+The settings file is organised into sections, each starting with a name
+in square brackets like `[folio]`. Here is what each section does and
+which values you must change.
 
-#### `[folio]`
-Connection settings for your FOLIO instance.
+### [folio] section — connecting to your FOLIO system
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `base_url` | — | Okapi gateway (no trailing slash) |
-| `tenant` | `fs00001006` | `x-okapi-tenant` header value |
-| `username` | — | FOLIO username |
-| `password` | — | FOLIO password |
-| `edge_api` | — | Optional Edge API base URL — enables RTAC holdings lookup |
-| `edge_api_key` | — | API key for the Edge endpoint (paired with `edge_api`) |
+```
+[folio]
+base_url = https://api-fivecolleges.folio.ebsco.com
+tenant = fs00001006
+username = your_username
+password = your_password
+edge_api =
+edge_api_key =
+```
 
-#### `[eds]`
-Used to build EDS OpenURL deep links. Leave blank to disable links.
+| Setting | What to put here |
+|---------|------------------|
+| `base_url` | The Okapi gateway URL from your FOLIO administrator. No trailing slash. |
+| `tenant` | Your FOLIO tenant ID, also from your administrator. |
+| `username` | The FOLIO user account this program will log in as. |
+| `password` | That account's password. |
+| `edge_api` | Optional. The base URL for FOLIO Edge if your institution uses it (e.g. `https://edge-fivecolleges.folio.ebsco.com`). |
+| `edge_api_key` | Optional. The API key that goes with `edge_api`. |
 
-| Key | Description |
-|-----|-------------|
-| `db_id` | Path component in `/c/{db_id}/openurl` |
-| `catalog_db` | e.g. `cat09206a` |
-| `an_prefix` | e.g. `scf.oai.edge.fivecolleges.folio.ebsco.com.fs00001006` |
-| `an_separator` | `dots` (default) or `dashes` — how the UUID is formatted |
-| `link_strategy` | `openurl` (default) or `search` — see below |
+If you do not have Edge API access, leave `edge_api` and `edge_api_key`
+blank. The program will still work; it just gets call numbers and
+locations from a slightly less complete source.
 
-**Link strategies:**
+### [eds] section — links to your discovery service
 
-- `openurl` — Builds an OpenURL with the FOLIO access number as the
-  primary `id` parameter PLUS `rft.isbn` / `rft.oclc` as supplementary
-  identifiers.  EDS resolves the AN first; when it can't (new records not
-  yet synced from FOLIO), the rft fields let it fall back to ISBN or
-  OCLC lookup.  Best when most of your records have either identifier.
+```
+[eds]
+db_id = 4e4lys
+catalog_db = cat09206a
+an_prefix = scf.oai.edge.fivecolleges.folio.ebsco.com.fs00001006
+an_separator = dots
+link_strategy = openurl
+```
 
-- `search` — Builds a direct EDS Discovery search URL (research.ebsco.com)
-  keyed on ISBN, OCLC, or title.  Always lands on a results page, never
-  a broken link, but the patron has to click through to the record.
-  Useful when AN-based resolution is unreliable.
+These values let the program build a clickable link from each title back
+to the catalog record in EDS. If you do not know what to put here, skip
+this section (leave the values blank or as placeholders) — the page will
+still render, but titles will not be clickable.
 
-#### `[google]`
-Cover image lookups via the free Google Books viewapi.  No API key required.
-Lookup keys are ISBN first, then OCLC if available.
+| Setting | What to put here |
+|---------|------------------|
+| `db_id` | The short code in EDS URLs after `/c/`, such as `4e4lys`. Look at any EDS permalink you have to find it. |
+| `catalog_db` | The catalog database identifier, such as `cat09206a`. Visible in EDS record URLs. |
+| `an_prefix` | The unique identifier prefix for your FOLIO records inside EDS. For Five Colleges this is `scf.oai.edge.fivecolleges.folio.ebsco.com.fs00001006`. Your EDS account manager can confirm. |
+| `an_separator` | `dots` or `dashes`, depending on how your records are stored in EDS. Try `dots` first. |
+| `link_strategy` | `openurl` (recommended) or `search`. `openurl` produces a direct link to the record. `search` produces a search-results link that always works even for very new records. |
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `enabled` | `true` | Set to `false` to disable Google Books lookups entirely |
+**Very important.** If `an_prefix` still contains the word `example` from
+the template (`scf.oai.edge.example.folio.ebsco.com.fs00001006`), every
+link will go to an EDS "not found" page. The program will print a warning
+about this in its log when you run it, so watch for that.
 
-#### `[tmdb]`
-Optional TMDB (The Movie Database) poster fallback for DVDs / video recordings.
-Tried only when Google Books returns no cover.  Get a free API key at
-<https://www.themoviedb.org/settings/api>.
+### [google] section — cover images for books
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `api_key` | — | Leave blank to disable TMDB lookups |
-| `poster_size` | `w500` | One of `w185`, `w342`, `w500`, `w780`, `original` |
+```
+[google]
+enabled = true
+```
 
-#### `[output]`
-| Key | Default | Description |
-|-----|---------|-------------|
-| `days` | `30` | Lookback window when no `--start`/`--end` given |
-| `output_file` | `output/new-materials.html` | Output path for the HTML; assets/ and data/ are written alongside it |
-| `title` | `New Materials` | Page heading |
-| `institution_name` | `Library` | Shown in header and footer |
-| `logo_url` | — | URL (or data: URI) of your logo image |
-| `primary_color` | `#003366` | Header/link colour |
-| `accent_color` | `#ffffff` | Text on primary background |
-| `default_view` | `grid` | Initial view (`grid` or `table`); per-user choice is then saved to localStorage |
-| `holdings_display` | `summary` | How to render multi-holding items: `none`, `compact`, `summary`, `detailed` |
-| `pages_per_type` | `false` | When `true`, write one HTML page per material type (e.g. `new-books.html`) instead of a single combined page |
-| `log_file` | `logs/folio-new-books.log` | Path for the rotating log file (10 MB × 5 backups). Set to `none` to disable file logging |
+This controls whether the program tries to fetch cover images from Google
+Books. It is free and requires no API key. Set to `false` if you would
+prefer no covers (the page will use a coloured placeholder with the title
+written on it).
 
-#### `[material_types]`
-Maps FOLIO material-type UUIDs to display labels for the format dropdown.
+### [tmdb] section — cover posters for DVDs
 
-**Leave this section empty (or omit it) to fetch ALL material types from
-FOLIO.**  When empty, the generator calls `/material-types` to auto-discover
-type names, so the dropdown is populated from the actual types that appear in
-the results.  Add entries here only when you want to restrict the listing to
-specific formats.
+```
+[tmdb]
+api_key =
+poster_size = w500
+```
 
-```ini
+Get a free API key at https://www.themoviedb.org/settings/api. Paste it
+into `api_key`. Without an API key, DVDs use placeholders. Books do not
+need TMDB.
+
+### [output] section — appearance and behaviour
+
+```
+[output]
+days = 30
+output_file = output/new-materials.html
+title = New Materials
+institution_name = Your Library
+logo_url =
+primary_color = #003366
+accent_color = #ffffff
+default_view = grid
+holdings_display = summary
+pages_per_type = false
+log_file = logs/folio-new-books.log
+```
+
+| Setting | What to put here |
+|---------|------------------|
+| `days` | How many days back to look for new materials. |
+| `output_file` | Where to save the generated HTML page. Relative paths are relative to the folder you ran the program from. |
+| `title` | The page heading shown to patrons. |
+| `institution_name` | Your library's name, shown in the header and footer. |
+| `logo_url` | A URL to your library's logo image. Leave blank for no logo. |
+| `primary_color` | Header background color, as a hex code. |
+| `accent_color` | Text color on the primary background. |
+| `default_view` | `grid` or `table`. Patrons can still toggle between the two; this just sets which one shows first. |
+| `holdings_display` | `none`, `compact`, `summary`, or `detailed`. Controls how much copy-availability information shows on each card. `summary` is the right choice for most libraries. |
+| `pages_per_type` | If `true`, the program writes a separate page per material type (e.g. `new-books.html`, `new-dvds.html`) instead of one combined page. |
+| `log_file` | Where to write the runtime log file. Set to `none` to disable file logging. |
+
+### [material_types] section — which formats to include
+
+```
 [material_types]
-2d72aa13-2451-41fe-afc7-b3dc7c131389 = Books
-faa0cd0a-e408-4b57-acff-1c3f9171723d = DVD
+# Leave this empty to include all material types from FOLIO.
+# To restrict, list specific UUIDs:
+# 2d72aa13-2451-41fe-afc7-b3dc7c131389 = Books
+# faa0cd0a-e408-4b57-acff-1c3f9171723d = DVD
 ```
 
-#### `[subject_groups]`
-Optional.  Groups items by high-level subject area, with two modes:
+If you leave this section empty (or omit it entirely), the program
+fetches every material type from FOLIO and presents them all. This is
+the simplest configuration and what most libraries should use.
 
-**Manual groups (curated):**  list group names and keywords.  An item is
-placed in the first group whose keyword appears in any of its FOLIO subject
-headings; unmatched items are "Other".
+If you only want certain formats (for example, books and DVDs but not
+e-resources), you can list their FOLIO UUIDs and display labels here.
+Your FOLIO administrator can find the UUIDs in the FOLIO Settings
+application under Inventory → Material types.
 
-```ini
-[subject_groups]
-Engineering = engineering, computer, programming, mathematics, physics
-Humanities  = literature, philosophy, history, art, music
-Sciences    = biology, chemistry, geology, ecology, astronomy
+### [subject_groups] section — grouping by subject area
+
 ```
-
-**LCC-based groups:**  set `lcc_grouping = true`.  Items are classified
-via a three-stage pipeline, first non-empty result wins:
-
-1. **Call number** matched against `static/lcc-classes.json` using
-   longest-prefix lookup.  Requires LCC-shaped call numbers (`^[A-Z]{1,3}\d`),
-   so placeholders like "Online" or "[On order]" are correctly rejected.
-   - `PN51 .T7` → "Literature (General); Drama; Journalism" (PN match)
-   - `PS3558 .E63` → "American Literature"
-   - `QA76.5` → "Mathematics; Computer Science"
-   - `Online` → no match (placeholder)
-   - `641.5 SMI` → no match (Dewey)
-
-2. **Subject text** matched against `static/lcc-subjects.json` when the
-   call number doesn't classify.  Covers two common gaps:
-   - **Ebooks** — `call_number: "Online"`, but subjects are rich.
-   - **New arrivals** — call numbers haven't been assigned or synced to
-     EDS yet, but FOLIO subjects are present.
-
-   The matcher strips LCSH `--` and BISAC `/` subdivisions, tries the
-   exact main heading first, then phrases, then individual words.
-   Format markers (`Electronic books`, `Audiobooks`, etc.) are skipped
-   so they don't trigger spurious matches.
-
-3. **"Other"** if both stages miss.
-
-Both reference maps are copied to `output/assets/` (`lcc-classes.json` and
-`lcc-subjects.json`) — edit them to extend or correct entries without
-touching code.
-
-The two modes compose: when both are set, manual groups match first;
-items the keywords don't catch fall through to LCC instead of going
-straight to "Other".  Libraries on Dewey or local schemes should
-prefer manual groups.
-
-```ini
 [subject_groups]
 lcc_grouping = true
-
-# Optional: hand-curated overrides that take precedence over LCC
-# Engineering = engineering, computer, programming
 ```
 
-To edit or extend the class map, change `static/lcc-classes.json` —
-new entries are picked up on the next run.
+When `lcc_grouping = true`, the program reads each item's call number
+and groups it by Library of Congress Classification. Items end up sorted
+into roughly 150 subject areas (Mathematics; Computer Science, Astronomy,
+English Literature, and so on). A second dropdown labelled "Subject area"
+appears in the page toolbar.
 
-When either mode is active, a second filter dropdown ("Subject area")
-appears in the toolbar.
+This works well for any library that uses LCC. If you use Dewey or
+another scheme, leave `lcc_grouping = false` or provide your own keyword
+groups. See `config.ini.example` for the full options.
 
-#### Pages per material type
+---
 
-Set `[output] pages_per_type = true` to generate one HTML page per
-material type instead of a single combined page:
+## Step 6. Run it once to test
+
+You are now ready to test. Open a terminal, navigate to the project
+folder, and run:
+
+On macOS or Linux:
+
+```
+python3 generate.py --verbose
+```
+
+On Windows:
+
+```
+python generate.py --verbose
+```
+
+You should see output similar to this:
+
+```
+2026-05-14 06:00:00  INFO  __main__  ──────────────────────────────────
+2026-05-14 06:00:00  INFO  __main__  FOLIO New Materials — run starting
+2026-05-14 06:00:00  INFO  __main__  Config: config.ini
+2026-05-14 06:00:01  INFO  __main__  Date range: 2026-04-14 → 2026-05-14
+2026-05-14 06:00:02  INFO  __main__  FOLIO authentication successful
+2026-05-14 06:00:05  INFO  __main__  Retrieved 42 order lines
+2026-05-14 06:00:09  INFO  __main__  Fetched details for 38 instances
+2026-05-14 06:00:11  INFO  __main__  Fetching cover images for 38 items
+2026-05-14 06:00:25  INFO  __main__  HTML written to output/new-materials.html
+2026-05-14 06:00:25  INFO  __main__  Done — 38 items written to output/new-materials.html
+```
+
+If you see this kind of output, the program is working. Open the file it
+mentions (`output/new-materials.html`) in any web browser to see your
+new-materials page. Double-clicking the file in your file manager should
+open it.
+
+If you see errors instead, skip to the [Troubleshooting](#troubleshooting)
+section.
+
+---
+
+## Step 7. Schedule it to run automatically each night
+
+For your patrons to see fresh listings each morning, the program needs to
+run automatically once a day. Most libraries schedule it to run very
+early in the morning, before the library opens.
+
+### On macOS or Linux (using cron)
+
+Open a terminal and run:
+
+```
+crontab -e
+```
+
+This opens your personal cron schedule in a text editor. Add a line like
+this at the bottom (use Tab to navigate if the editor is vi):
+
+```
+0 5 * * * cd /full/path/to/folio-new-books && /usr/bin/python3 generate.py
+```
+
+The five fields at the start are: minute, hour, day of month, month, day
+of week. `0 5 * * *` means "every day at 5:00 AM". Adjust the path to
+match where you installed the project.
+
+To confirm cron will run your script, you can also schedule it to run a
+minute from now temporarily, watch the log file, then change it back.
+
+### On Windows (using Task Scheduler)
+
+1. Open Task Scheduler from the Start menu.
+2. Click "Create Basic Task" on the right.
+3. Give it a name like "FOLIO New Materials".
+4. Choose "Daily" and a time before opening (5:00 AM is common).
+5. For "Action", choose "Start a program".
+6. For "Program/script", browse to your Python executable (often
+   `C:\Python312\python.exe` or similar). Run `where python` in a
+   Command Prompt if you are not sure.
+7. For "Add arguments", put `generate.py`.
+8. For "Start in", put the full path to the project folder.
+
+After saving, you can right-click the task and choose "Run" to test it
+immediately.
+
+---
+
+## Step 8. Publish the page so patrons can see it
+
+You have several options here. Pick whichever suits your library's
+existing setup.
+
+### Option A. Copy the output to your existing web server
+
+This is the most common setup. The program writes a folder structure
+like this:
 
 ```
 output/
-├── new-books.html       (only Books, no format dropdown)
-├── new-dvds.html        (only DVDs)
-├── new-music-cd.html
-├── assets/
-│   ├── styles.css
-│   └── app.js
-└── data/
-    └── items.json       (combined feed — all items)
+  new-materials.html
+  assets/
+    styles.css
+    app.js
+    lcc-classes.json
+    lcc-subjects.json
+  data/
+    items.json
 ```
 
-Each page embeds only its own items as JSON.  The shared `data/items.json`
-still contains every item for programmatic consumers.  Useful when
-different staff want shareable per-format lists ("here's the new DVDs").
+Copy the entire `output` folder (or its contents) to a folder on your
+web server that is served via HTTP. The page is a complete static site,
+so any web hosting will work — no database, no server-side scripting.
 
-#### Holdings and RTAC
-When `[folio] edge_api` and `edge_api_key` are both set, the generator
-calls the Edge RTAC endpoint (`/prod/rtac/folioRTAC`) once per instance to
-fetch live holdings data.  This supplies:
+To do this automatically each night, change the cron command to write
+the output directly to your web server's directory:
 
-- Authoritative call numbers
-- Library / location names (consortium-aware — handles multi-branch copies)
-- Status (Available, Checked out, etc.) and due date
-- Material type and barcode
+```
+0 5 * * * cd /opt/folio-new-books && /usr/bin/python3 generate.py \
+    --output /var/www/library/new-materials/new-materials.html
+```
 
-Each item's `holdings` array in `data/items.json` contains every copy.
-The card / table view shows them according to `holdings_display`:
+The `assets/` and `data/` folders are created automatically next to the
+HTML file.
 
-| Mode | Card display |
-|------|--------------|
-| `none` | Hide the holdings block |
-| `compact` | Just the count: "3 copies" |
-| `summary` (default) | First call number + library, with "+N more" hint and full list on hover |
-| `detailed` | Full list of all copies with call number / library / status |
+### Option B. Host on a free static-site service
+
+Services like Netlify, GitHub Pages, or your campus's static-hosting
+service can serve the output. Configure them to look at your `output/`
+folder.
+
+### Option C. Open it locally
+
+If only library staff need to see it, you can just open
+`output/new-materials.html` directly in a web browser whenever you want
+to check what came in. No hosting needed.
 
 ---
 
-## CLI options
+## Updating the software later
+
+If you downloaded the ZIP, download a fresh ZIP and replace the project
+folder. Your `config.ini` lives outside the ZIP, so it will not be
+overwritten as long as you keep a backup.
+
+If you used Git, run this in the project folder:
 
 ```
-python generate.py [options]
-
-  --config PATH     Config file (default: config.ini)
-  --start DATE      Start date YYYY-MM-DD  (overrides --days)
-  --end DATE        End date YYYY-MM-DD
-  --days N          Lookback days (overrides config)
-  --output PATH     Output file (overrides config)
-  --no-images       Skip cover-image lookup
-  --log-file PATH   Override log file (use 'no'/'none' to disable file logging)
-  --verbose, -v     Debug logging on the console (file always captures DEBUG)
+git pull
 ```
 
----
-
-## Cron job setup
-
-> **Security note:** Run the script from *outside* the project directory.
-> This keeps `config.ini` away from any web-accessible path.
-
-The generator writes a small directory tree at the output location:
+After updating, re-run the dependency install in case anything new is
+needed:
 
 ```
-/var/www/html/library/
-├── new-materials.html
-├── assets/
-│   ├── styles.css
-│   └── app.js
-└── data/
-    └── items.json
-```
-
-Point the web server at the parent directory so the HTML can resolve
-`assets/…` and `data/…` as siblings.
-
-Example `/etc/cron.d/folio-new-materials`:
-
-```cron
-0 6 * * * libuser cd /srv && python /opt/folio-new-books/generate.py \
-    --config /opt/folio-new-books/config.ini \
-    --output /var/www/html/library/new-materials.html
+pip3 install -r requirements.txt
 ```
 
 ---
 
-## Running tests
+## Troubleshooting
 
-```bash
-python -m pytest tests/
+### Configuration error: Missing required config
 
-# with coverage (requires pytest-cov, already in requirements.txt)
-python -m pytest --cov=src tests/
+The program prints `Missing required config: [section] key` when a value
+you must provide is blank or missing. Open `config.ini` and fill in the
+named field. The three required fields are
+`[folio] base_url`, `[folio] username`, and `[folio] password`.
+
+### FOLIO authentication failed
+
+Either your username or password is wrong, or the `base_url` and `tenant`
+do not match. Double-check all four values. Note that FOLIO is
+case-sensitive — `MyTenant` and `mytenant` are not the same.
+
+If you suspect your account is locked, try logging into the FOLIO web
+interface with the same credentials.
+
+### Every EDS link goes to "not_found"
+
+Almost certainly your `an_prefix` setting still has the word `example`
+in it. Replace `example` with your institution's actual identifier
+(your EDS account manager can confirm — for Five Colleges it is
+`fivecolleges`). Re-run the program; the links should resolve to real
+records the next day.
+
+This is so common that the program prints a warning about it at startup.
+Look for "appears to contain the placeholder" in your log file.
+
+### Empty page / "No new materials in this date range"
+
+This means the program ran successfully but found no items received in
+the last 30 days (or whatever window you set). Possibilities:
+
+- Your `days` setting is too short — try `90` to see if older items appear.
+- Your account does not have read access to Orders in FOLIO. Ask your
+  administrator.
+- No items have receipt status "Fully Received" yet. The program only
+  shows received items, not items merely on order.
+
+### Cover images are not appearing
+
+Books should get cover images automatically from Google Books, which is
+free. If you see colored placeholders instead:
+
+- Check that `enabled = true` is set in the `[google]` section.
+- Confirm your computer or server has internet access (the program calls
+  `books.google.com` and similar).
+- Not every book has a cover image available in Google Books. Older
+  books, foreign-language titles, and items without ISBNs sometimes do
+  not.
+
+For DVDs, you need a TMDB API key. See [Step 5](#step-5-fill-in-the-settings).
+
+### "Permission denied" when running pip or python
+
+On a shared computer, you may need to install Python libraries into your
+own user directory rather than system-wide:
+
 ```
+pip3 install --user -r requirements.txt
+```
+
+### The cron job runs but nothing changes on the website
+
+Check that the cron job is writing the output to the same folder your
+web server is serving from. The `--output` flag in the cron command must
+point to the right place. The log file (`logs/folio-new-books.log` by
+default) will tell you where the program actually wrote.
+
+If you are not sure where cron is running, add this to the top of your
+cron command for a one-off test:
+
+```
+0 5 * * * cd /opt/folio-new-books && pwd > /tmp/cron-test.txt && python3 generate.py
+```
+
+Then look at `/tmp/cron-test.txt` after the cron runs.
 
 ---
 
-## Project structure
+## Files this program writes
 
-```
-folio-new-books/
-├── config.ini.example    # Copy → config.ini and fill in credentials
-├── generate.py           # Entry point
-├── requirements.txt
-├── src/
-│   ├── config_loader.py  # INI config loading and validation
-│   ├── folio_client.py   # FOLIO Okapi API (auth, orders, instances)
-│   ├── edge_client.py    # FOLIO Edge RTAC holdings lookup
-│   ├── google_images.py  # Google Books cover lookup
-│   ├── tmdb_client.py    # TMDB poster lookup
-│   ├── subjects.py       # Subject classification (manual + auto-grouped)
-│   └── html_generator.py # Item building, HTML/JSON rendering
-├── templates/
-│   └── new_materials.html.j2  # Page shell (Jinja2)
-├── static/               # Copied verbatim into <output>/assets/
-│   ├── styles.css        # All styling
-│   └── app.js            # Filter, sort, view-toggle, render
-├── tests/                # pytest suite
-└── output/               # Generated files (gitignored)
-```
-
-## Output layout
-
-Each run produces a clean three-folder structure that can be served by any
-static web host (or opened directly via `file://`).
+After a successful run, you will find these files:
 
 ```
 output/
-├── new-materials.html    # ~10KB shell — embedded JSON, no inline CSS/JS
-├── assets/
-│   ├── styles.css        # All styling
-│   └── app.js            # Reads the embedded JSON, renders the views
-└── data/
-    └── items.json        # Same data as a standalone file (for RSS, dashboards, etc.)
+  new-materials.html        - the main page patrons will view
+  assets/
+    styles.css              - styling for the page
+    app.js                  - filtering, sorting, view-toggle behaviour
+    lcc-classes.json        - LCC class lookup table (editable)
+    lcc-subjects.json       - subject keyword lookup table (editable)
+  data/
+    items.json              - the same data in machine-readable form
+logs/
+  folio-new-books.log       - the run log
 ```
 
-Notes:
-- **Embedded JSON.** The HTML carries the item list in a
-  `<script type="application/json" id="items-data">` block so the page works
-  on `file://` URLs without a CORS workaround.  `app.js` reads it once at load
-  and builds both the grid and table views from the same array.
-- **Parallel JSON file.** `data/items.json` contains the exact same envelope
-  (generated_at, date_range, institution, total_count, items[]) so that
-  programmatic consumers — RSS bridges, dashboards, the campus portal — can
-  fetch the data without parsing HTML.
-- **JavaScript disabled.** The page renders a `<noscript>` notice that links
-  to `data/items.json` so the data is still reachable.  If serving to public
-  terminals where JS may be locked down, point patrons at the JSON file or
-  the printable view (built-in print stylesheet renders a clean 3-col grid).
+The two JSON files under `data/` are useful if you want to pipe the
+new-materials data into another system (an RSS feed generator, a campus
+portal, a dashboard, etc.). They are well-formed JSON and stable across
+releases.
+
+The log file under `logs/` rotates automatically: when it reaches 10 MB
+it is renamed and a new one started. Up to five backup files are kept.
+
+---
+
+## Customising what your patrons see
+
+### Brand colors and logo
+
+Change `primary_color`, `accent_color`, `logo_url`, and `institution_name`
+in the `[output]` section of `config.ini`. No code changes needed.
+
+### The list of subject areas
+
+The file `static/lcc-subjects.json` maps subject keywords like
+"philosophy" or "computer programming" to LCC class letters. If you find
+yourself wishing a particular subject was classified differently, edit
+this file and add your own entries.
+
+Likewise, `static/lcc-classes.json` controls the human-readable label
+shown for each LCC class. You can rename "Mathematics; Computer Science"
+to just "Mathematics" if your library prefers shorter labels.
+
+After editing either file, re-run the program; changes take effect on
+the next page generation.
+
+### Removing the format dropdown
+
+If your library only stocks one or two formats, the format dropdown is
+shown automatically when more than one format appears in the results. To
+hide it entirely, you can restrict the listing to a single material type
+in the `[material_types]` section.
+
+---
+
+## Keeping credentials safe
+
+Your `config.ini` file contains your FOLIO password and possibly other
+API keys. To keep them safe:
+
+- The `.gitignore` file in this project is configured to exclude
+  `config.ini`, so it cannot accidentally end up in version control.
+- If you need to ask for help, post the contents of
+  `config.ini.example` (which has only placeholders) and never the live
+  `config.ini`. Or, if you must share a redacted version, replace all
+  passwords and API keys with the word `REDACTED` before sending.
+- The program should be run from outside any web-server document root,
+  so that `config.ini` is never accidentally served as a static file.
+  In other words, install it under `/opt/folio-new-books` or in your
+  home directory, never under `/var/www`.
+- If you suspect your FOLIO password may have leaked, change it in
+  FOLIO immediately and update `config.ini`.
+
+---
+
+## Glossary
+
+**FOLIO** — The library services platform used to manage acquisitions,
+inventory, circulation, and so on. This program reads from it.
+
+**Okapi** — The FOLIO API gateway. The `base_url` in your configuration
+points to this.
+
+**mod-search** — A FOLIO module that provides searchable bibliographic
+data. The program queries this for instance details and subjects.
+
+**RTAC** — Real-Time Availability Check. A FOLIO Edge endpoint that
+returns up-to-the-minute holdings and availability data for an instance.
+Used when an Edge API key is configured.
+
+**Edge API** — A simpler, apikey-authenticated FOLIO API designed for
+external consumers (discovery services, link resolvers, etc.). Separate
+from Okapi.
+
+**EDS** — EBSCO Discovery Service. The patron-facing search interface
+that the page links to.
+
+**OpenURL** — A standard format for "find me this record" web addresses,
+used by EDS and similar services.
+
+**Access number (AN)** — The unique identifier EDS uses to find a record
+in its index. The `an_prefix` in your configuration is the portion of
+the AN that identifies your institution.
+
+**LCC** — Library of Congress Classification. The call-number scheme
+most US academic libraries use (call numbers starting with letters like
+PR, QA, HV). The program groups items by LCC class when enabled.
+
+**Dewey** — Dewey Decimal Classification, an alternative call-number
+scheme used by many public libraries (call numbers starting with
+numbers like 641.5). The LCC grouping feature does not classify Dewey
+numbers; if your library uses Dewey, you can leave LCC grouping off or
+provide your own keyword-based groups.
+
+**Material type** — In FOLIO, the format category of an item (Book, DVD,
+Music CD, Periodical, etc.). Each has a UUID.
+
+**ISBN** — International Standard Book Number. A 10- or 13-digit
+identifier most books have.
+
+**OCLC number** — A worldwide bibliographic identifier assigned by OCLC
+(formerly the Online Computer Library Center). Useful for items without
+ISBNs.
+
+**Cron** — The Unix/Linux/macOS facility for scheduling a command to run
+automatically on a schedule.
+
+**Task Scheduler** — The Windows equivalent of cron.
+
+---
+
+## Reporting problems and contributing
+
+If something does not work and the [Troubleshooting](#troubleshooting)
+section does not help, please file an issue on the GitHub repository.
+Include the relevant lines from your log file (with any passwords or
+API keys removed) so we can see what the program was doing when it
+failed.
+
+Pull requests for bug fixes, documentation improvements, or new features
+are welcome. Please run the test suite before submitting:
+
+```
+python3 -m pytest tests/
+```
+
+---
+
+## License
+
+This software is distributed under the terms of the license declared in
+the `LICENSE` file in the project folder. If no `LICENSE` file is
+present, please contact the project maintainer before using the
+software outside your own institution.

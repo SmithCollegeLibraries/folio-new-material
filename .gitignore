@@ -1,10 +1,20 @@
-# Credentials — never commit
+# Credentials and live config — never commit
 config.ini
+*.local.ini
 .env
+.env.*
 
-# Generated output
+# Generated output and runtime files
 output/
 logs/
+
+# Project notes / design docs not meant for public publication
+context.txt
+
+# Editor and tooling local state
+.claude/
+.vscode/
+.idea/
 
 # Python
 __pycache__/
@@ -17,6 +27,8 @@ dist/
 *.egg-info/
 venv/
 .venv/
+env/
 
-# macOS
+# macOS / Linux desktop noise
 .DS_Store
+Thumbs.db
