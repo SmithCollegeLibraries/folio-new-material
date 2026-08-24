@@ -222,6 +222,18 @@ class TestMinimalConfig:
         cfg = Config(_write_config(tmp_path, content))
         assert cfg.holdings_display == "summary"
 
+    def test_excluded_item_statuses_empty_by_default(self, tmp_path):
+        cfg = Config(_write_config(tmp_path, MINIMAL_CONFIG))
+        assert cfg.excluded_item_statuses == set()
+
+    def test_excluded_item_statuses_are_trimmed_and_casefolded(self, tmp_path):
+        content = MINIMAL_CONFIG + (
+            "\n[output]\n"
+            "excluded_item_statuses = In process, MISSING,  Lost  \n"
+        )
+        cfg = Config(_write_config(tmp_path, content))
+        assert cfg.excluded_item_statuses == {"in process", "missing", "lost"}
+
 
 class TestFullConfig:
     def test_folio_values(self, tmp_path):

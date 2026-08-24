@@ -363,6 +363,7 @@ primary_color = #003366
 accent_color = #ffffff
 default_view = grid
 holdings_display = summary
+excluded_item_statuses =
 pages_per_type = false
 log_file = logs/folio-new-books.log
 ```
@@ -378,6 +379,7 @@ log_file = logs/folio-new-books.log
 | `accent_color` | Text color on the primary background. |
 | `default_view` | `grid` or `table`. Patrons can still toggle between the two; this just sets which one shows first. |
 | `holdings_display` | `none`, `compact`, `summary`, or `detailed`. Controls how much copy-availability information shows on each card. `summary` is the right choice for most libraries. |
+| `excluded_item_statuses` | Optional comma-separated FOLIO item statuses to omit, such as `In process, Missing, Lost`. Matching is exact and case-insensitive. A title is hidden only if every holding is excluded. |
 | `pages_per_type` | If `true`, the program writes a separate page per material type (e.g. `new-books.html`, `new-dvds.html`) instead of one combined page. |
 | `log_file` | Where to write the runtime log file. Set to `none` to disable file logging. |
 

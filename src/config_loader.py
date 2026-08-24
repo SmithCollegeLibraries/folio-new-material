@@ -209,6 +209,16 @@ class Config:
         return raw if raw in ("none", "compact", "summary", "detailed") else "summary"
 
     @property
+    def excluded_item_statuses(self) -> set[str]:
+        """Case-insensitive item status names to omit from generated listings."""
+        raw = self._get("output", "excluded_item_statuses")
+        return {
+            status.strip().casefold()
+            for status in raw.split(",")
+            if status.strip()
+        }
+
+    @property
     def log_file(self) -> str:
         """
         Path to the log file (relative paths resolve against the cwd of the

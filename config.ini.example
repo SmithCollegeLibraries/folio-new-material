@@ -83,6 +83,11 @@ default_view = grid
 #   summary  — show the first call number + library, with "+N more" if more (default)
 #   detailed — show every holding as a list
 holdings_display = summary
+# Optional comma-separated item statuses to remove from the listing.
+# Matching is exact and case-insensitive.  A title is hidden only when all of
+# its holdings have excluded statuses; titles without holdings are preserved.
+# Example: In process, Missing, Lost, Withdrawn
+excluded_item_statuses =
 # When true, write one HTML page per material type (e.g. new-books.html,
 # new-dvds.html) instead of a single combined page with a format dropdown.
 # Useful for staff who want to share a per-format list independently.

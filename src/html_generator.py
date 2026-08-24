@@ -84,6 +84,7 @@ def build_items(
     locations_map = locations_map or {}
     configured_groups = getattr(config, "subject_groups", {}) or {}
     lcc_on = getattr(config, "lcc_grouping", False)
+    excluded_statuses = getattr(config, "excluded_item_statuses", set()) or set()
 
     items = []
     for line in order_lines:
@@ -112,6 +113,20 @@ def build_items(
                         h["call_number"] = classification_cn
         else:
             holdings = build_fallback_holdings(instance, locations_map)
+
+        if holdings and excluded_statuses:
+            holdings = [
+                holding
+                for holding in holdings
+                if (holding.get("status") or "").strip().casefold()
+                not in excluded_statuses
+            ]
+            if not holdings:
+                logger.debug(
+                    "Skipping order line %s — all holdings have excluded statuses",
+                    line.get("id"),
+                )
+                continue
 
         raw_subjects = instance.get("subjects") or []
 

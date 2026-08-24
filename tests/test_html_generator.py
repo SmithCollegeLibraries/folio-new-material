@@ -46,6 +46,7 @@ def _config(
     lcc_grouping=False,
     default_view="grid",
     holdings_display="summary",
+    excluded_item_statuses=None,
 ):
     cfg = MagicMock()
     cfg.primary_color = primary_color
@@ -63,6 +64,7 @@ def _config(
     cfg.lcc_grouping = lcc_grouping
     cfg.default_view = default_view
     cfg.holdings_display = holdings_display
+    cfg.excluded_item_statuses = excluded_item_statuses or set()
     return cfg
 
 
@@ -357,6 +359,78 @@ class TestBuildItems:
         )
         assert items[0]["call_number"] == "RTAC-CN"
         assert len(items[0]["holdings"]) == 2
+
+    def test_excluded_status_removes_only_matching_rtac_holding(self):
+        rtac = {SAMPLE_INSTANCE["id"]: [
+            {"call_number": "QA76.5 A", "status": "Available", "library": "Main"},
+            {"call_number": "QA76.5 M", "status": "Missing", "library": "Main"},
+        ]}
+        items = build_items(
+            [SAMPLE_ORDER_LINE],
+            {SAMPLE_INSTANCE["id"]: SAMPLE_INSTANCE},
+            {},
+            _config(excluded_item_statuses={"missing"}),
+            rtac_holdings=rtac,
+        )
+
+        assert len(items) == 1
+        assert items[0]["holdings"] == [
+            {"call_number": "QA76.5 A", "status": "Available", "library": "Main"},
+        ]
+
+    def test_title_is_hidden_when_every_holding_status_is_excluded(self):
+        rtac = {SAMPLE_INSTANCE["id"]: [
+            {"call_number": "QA76.5", "status": "In process", "library": "Main"},
+            {"call_number": "QA76.5", "status": "Missing", "library": "Main"},
+        ]}
+        items = build_items(
+            [SAMPLE_ORDER_LINE],
+            {SAMPLE_INSTANCE["id"]: SAMPLE_INSTANCE},
+            {},
+            _config(excluded_item_statuses={"in process", "missing"}),
+            rtac_holdings=rtac,
+        )
+
+        assert items == []
+
+    def test_excluded_status_matching_is_exact_and_case_insensitive(self):
+        rtac = {SAMPLE_INSTANCE["id"]: [
+            {"call_number": "QA76.5", "status": " missing ", "library": "Main"},
+            {"call_number": "QA76.5", "status": "Long missing", "library": "Main"},
+        ]}
+        items = build_items(
+            [SAMPLE_ORDER_LINE],
+            {SAMPLE_INSTANCE["id"]: SAMPLE_INSTANCE},
+            {},
+            _config(excluded_item_statuses={"missing"}),
+            rtac_holdings=rtac,
+        )
+
+        assert [holding["status"] for holding in items[0]["holdings"]] == ["Long missing"]
+
+    def test_title_without_holdings_is_not_hidden_by_status_filter(self):
+        items = build_items(
+            [SAMPLE_ORDER_LINE],
+            {SAMPLE_INSTANCE["id"]: SAMPLE_INSTANCE},
+            {},
+            _config(excluded_item_statuses={"missing"}),
+        )
+
+        assert len(items) == 1
+
+    def test_excluded_status_filters_mod_search_fallback_holdings(self):
+        instance = dict(SAMPLE_INSTANCE, items=[{
+            "status": {"name": "In Process"},
+            "effectiveCallNumberComponents": {"callNumber": "QA76.5"},
+        }])
+        items = build_items(
+            [SAMPLE_ORDER_LINE],
+            {instance["id"]: instance},
+            {},
+            _config(excluded_item_statuses={"in process"}),
+        )
+
+        assert items == []
 
     def test_subjects_included_in_item_dict(self):
         instance = dict(SAMPLE_INSTANCE, subjects=["History", "Chemistry"])
